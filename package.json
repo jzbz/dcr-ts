@@ -1,0 +1,66 @@
+{
+  "name": "dcr-ts",
+  "version": "0.1.0",
+  "description": "Decred (DCR) primitives for TypeScript: BLAKE-256, addresses, BIP32 HD keys, WIF, the transaction wire format, the Decred signature hash, and low-S ECDSA signing. Byte-exact with dcrd.",
+  "type": "module",
+  "license": "ISC",
+  "author": "Jonathan Zeppettini <jz@jz.bz>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jzbz/dcr-ts"
+  },
+  "keywords": [
+    "decred",
+    "dcr",
+    "cryptocurrency",
+    "blake256",
+    "bip32",
+    "secp256k1",
+    "wallet"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.9.1",
+    "@noble/hashes": "^1.8.0",
+    "@scure/bip39": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
