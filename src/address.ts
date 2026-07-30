@@ -23,7 +23,7 @@ import {
   payToPubKeyScript,
   payToScriptHashScript,
 } from "./script.js";
-import { isValidPublicKey } from "./keys.js";
+import { assertCompressedPubKey, isValidPublicKey } from "./keys.js";
 
 export type AddressKind =
   | "pubkeyhash-ecdsa"
@@ -99,10 +99,8 @@ export function pubKeyHashSchnorrAddress(hash: Uint8Array, network: Network): st
 const SIG_TYPE_ODD_FLAG = 0x80;
 
 function encodePubKeyData(compressedPubKey: Uint8Array): Uint8Array {
+  assertCompressedPubKey(compressedPubKey, "pubKeyAddress");
   const prefix = compressedPubKey[0]!;
-  if (prefix !== 0x02 && prefix !== 0x03) {
-    throw new Error("pubKeyAddress: expected a 33-byte compressed public key");
-  }
   const data = new Uint8Array(33);
   data[0] = SignatureTypeEcdsa | (prefix === 0x03 ? SIG_TYPE_ODD_FLAG : 0);
   data.set(compressedPubKey.subarray(1), 1);
@@ -129,12 +127,20 @@ const SignatureTypeEcdsa = 0;
 
 /** Encode a compressed public key as a pay-to-pubkey (secp256k1 ECDSA) address. */
 export function pubKeyAddress(compressedPubKey: Uint8Array, network: Network): string {
-  if (compressedPubKey.length !== 33) throw new Error("pubKeyAddress: pubkey must be 33 bytes");
   return encode(network.pubKeyAddrId, encodePubKeyData(compressedPubKey));
 }
 
-/** Derive the standard P2PKH address for a public key (`hash160` of the key). */
+/**
+ * Derive the standard P2PKH address for a public key (`hash160` of the key).
+ *
+ * The key is validated as a real curve point first. Without that, any byte string
+ * hashes to something and produces a well-formed, valid-checksum address that no
+ * key can ever spend from — and the way to hit it is mundane: passing
+ * `privateKeyBytes()` where `publicKey()` was meant type-checks silently, because
+ * both are `Uint8Array`, and 32 vs 33 bytes is invisible at the call site.
+ */
 export function addressFromPubKey(compressedPubKey: Uint8Array, network: Network): string {
+  assertCompressedPubKey(compressedPubKey, "addressFromPubKey");
   return pubKeyHashAddress(hash160(compressedPubKey), network);
 }
 

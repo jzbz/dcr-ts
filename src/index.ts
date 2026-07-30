@@ -26,7 +26,7 @@ export {
   checkEncode,
   checkDecode,
 } from "./base58.js";
-export { Reader, Writer } from "./bytes.js";
+export { copyOf, Reader, Writer } from "./bytes.js";
 
 // Networks
 export {
@@ -41,6 +41,7 @@ export {
 
 // Keys
 export {
+  assertCompressedPubKey,
   CURVE_ORDER,
   isValidPrivateKey,
   isValidPublicKey,
@@ -74,6 +75,7 @@ export {
 // Scripts
 export {
   OP,
+  MAX_SCRIPT_ELEMENT_SIZE,
   pushData,
   payToPubKeyHashScript,
   payToPubKeyHashAltScript,
@@ -82,6 +84,8 @@ export {
   isPayToPubKeyHash,
   isPayToScriptHash,
   extractHash160,
+  classifyScript,
+  type ScriptKind,
 } from "./script.js";
 
 // HD keys

@@ -11,7 +11,7 @@
  * serialization-type selector in its high 16 bits.
  */
 import { blake256 } from "./hash.js";
-import { Reader, Writer } from "./bytes.js";
+import { copyOf, Reader, Writer } from "./bytes.js";
 
 /** Transaction serialization selectors (encoded in the version word). */
 export enum TxSerializeType {
@@ -28,9 +28,16 @@ export enum TxTree {
 
 export const DEFAULT_TX_VERSION = 1;
 export const MAX_SEQUENCE = 0xffffffff;
-/** Sentinel "unknown" input amount / block position used for unsigned inputs. */
+/**
+ * Sentinel "unknown" input amount / block position used for unsigned inputs,
+ * matching dcrd's `wire.NullValueIn` / `NullBlockHeight` / `NullBlockIndex`.
+ *
+ * Note the asymmetry, which is dcrd's and not a typo here: the null block
+ * *height* is `0` ("it references the genesis block") while the null block
+ * *index* is `0xffffffff`.
+ */
 export const NULL_VALUE_IN = -1n;
-export const NULL_BLOCK_HEIGHT = 0xffffffff;
+export const NULL_BLOCK_HEIGHT = 0;
 export const NULL_BLOCK_INDEX = 0xffffffff;
 
 export interface OutPoint {
@@ -76,25 +83,43 @@ export class Transaction {
   lockTime = 0;
   expiry = 0;
 
-  /** Add an input. Witness fields default to the "unsigned/unknown" sentinels. */
+  /**
+   * Add an input. Witness fields default to the "unsigned/unknown" sentinels.
+   *
+   * The outpoint and signature script are copied, so a caller that reuses or
+   * scrubs its own buffers afterwards cannot silently rewrite this transaction's
+   * bytes — which would change its txid and invalidate every signature already
+   * computed over it, with nothing to detect the change.
+   */
   addInput(
     previousOutPoint: OutPoint,
     opts: Partial<Omit<TxInput, "previousOutPoint">> = {},
   ): this {
+    if (previousOutPoint.hash.length !== 32) {
+      throw new Error(
+        `tx: outpoint hash must be 32 bytes, got ${previousOutPoint.hash.length}`,
+      );
+    }
     this.inputs.push({
-      previousOutPoint,
+      previousOutPoint: {
+        hash: copyOf(previousOutPoint.hash, 0, 32),
+        index: previousOutPoint.index,
+        tree: previousOutPoint.tree,
+      },
       sequence: opts.sequence ?? MAX_SEQUENCE,
       valueIn: opts.valueIn ?? NULL_VALUE_IN,
       blockHeight: opts.blockHeight ?? NULL_BLOCK_HEIGHT,
       blockIndex: opts.blockIndex ?? NULL_BLOCK_INDEX,
-      signatureScript: opts.signatureScript ?? new Uint8Array(0),
+      signatureScript: opts.signatureScript
+        ? copyOf(opts.signatureScript, 0, opts.signatureScript.length)
+        : new Uint8Array(0),
     });
     return this;
   }
 
-  /** Add an output. */
+  /** Add an output. The script is copied; see {@link addInput}. */
   addOutput(value: bigint, pkScript: Uint8Array, version = 0): this {
-    this.outputs.push({ value, version, pkScript });
+    this.outputs.push({ value, version, pkScript: copyOf(pkScript, 0, pkScript.length) });
     return this;
   }
 

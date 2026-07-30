@@ -44,9 +44,12 @@ func ck(err error) {
 	}
 }
 
-// A private key whose public key has an odd Y coordinate (02… vs 03…), so the
-// odd-Y branch of the pay-to-pubkey address encoding gets a vector too.
-const oddYPrivHex = "0000000000000000000000000000000000000000000000000000000000000002"
+// A private key whose public key has an odd Y coordinate, so the odd-Y branch of
+// the pay-to-pubkey address encoding gets a vector too. 6*G is the first small
+// multiple with an odd Y; the main test key above is even-Y, so without this the
+// encoder's odd-Y flag would never be exercised. Asserted in script.test.ts,
+// which checks the serialized key really does start with 0x03.
+const oddYPrivHex = "0000000000000000000000000000000000000000000000000000000000000006"
 
 // An Ed25519 scalar. dcrutil.NewWIF runs the key through
 // edwards.PrivKeyFromScalar for the Ed25519 suite, which rejects anything not in

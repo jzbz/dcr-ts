@@ -126,6 +126,60 @@ describe("addresses", () => {
     }
   });
 
+  test("pay-to-pubkey addresses and scripts match dcrd for both Y parities", () => {
+    // The fixture's main key is even-Y, so without the 6*G vector the encoder's
+    // odd-Y flag branch would never run.
+    for (const [name, network] of Object.entries(networks)) {
+      const a = vectors.keys.addresses[name]!;
+      expect(pubKeyAddress(pub, network), `${name} even-Y`).toBe(a.pubkeyAddr);
+      expect(bytesToHex(addressToScript(a.pubkeyAddr)), `${name} even-Y script`).toBe(
+        a.pubkeyAddr_script,
+      );
+
+      const oddPub = hexToBytes(a.pubkeyAddrOddY_script).subarray(1, 34);
+      expect(oddPub[0], "the odd-Y vector really is odd-Y").toBe(0x03);
+      expect(pubKeyAddress(oddPub, network), `${name} odd-Y`).toBe(a.pubkeyAddrOddY);
+      expect(bytesToHex(addressToScript(a.pubkeyAddrOddY)), `${name} odd-Y script`).toBe(
+        a.pubkeyAddrOddY_script,
+      );
+      // Decoding recovers the key with the right parity restored.
+      expect(bytesToHex(decodeAddress(a.pubkeyAddrOddY).pubKey!), `${name} odd-Y decode`).toBe(
+        bytesToHex(oddPub),
+      );
+    }
+  });
+
+  test("address encoders reject anything that is not a real public key", () => {
+    // A well-formed address derived from non-key bytes is permanently
+    // unspendable, and the way to produce one is mundane: passing a private key
+    // where the public key was meant type-checks, since both are Uint8Array.
+    const priv = hexToBytes(vectors.keys.privHex);
+    expect(priv.length, "32 vs 33 is the whole trap").toBe(32);
+    for (const fn of [addressFromPubKey, pubKeyAddress]) {
+      expect(() => fn(priv, networks.mainnet), `${fn.name} privkey`).toThrow(
+        /33 compressed bytes/,
+      );
+      expect(() => fn(new Uint8Array(0), networks.mainnet), `${fn.name} empty`).toThrow(
+        /33 compressed bytes/,
+      );
+      expect(() => fn(new Uint8Array(65), networks.mainnet), `${fn.name} uncompressed`).toThrow(
+        /33 compressed bytes/,
+      );
+      // Right length, wrong prefix.
+      const badPrefix = new Uint8Array(33);
+      badPrefix[0] = 0x04;
+      expect(() => fn(badPrefix, networks.mainnet), `${fn.name} prefix`).toThrow(/0x02 or 0x03/);
+      // Right length and prefix, not on the curve.
+      const offCurve = new Uint8Array(33);
+      offCurve[0] = 0x02;
+      offCurve.set(
+        hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
+        1,
+      );
+      expect(() => fn(offCurve, networks.mainnet), `${fn.name} off-curve`).toThrow(/curve/);
+    }
+  });
+
   test("pubkey addresses encoding an invalid curve point are rejected", () => {
     // X = the field prime is never a valid coordinate (x must be < p).
     const fieldPrime = hexToBytes(

@@ -5,6 +5,23 @@
  * and a few counters are 64-bit, so those cross through `bigint`.
  */
 
+/**
+ * Copy `n` bytes out of `src` starting at `off`, always into a fresh buffer.
+ *
+ * Deliberately not `src.slice(off, off + n)`. `Uint8Array.prototype.slice`
+ * copies, but Node's `Buffer` overrides it to return a *view* over the same
+ * memory (deprecated, still the behaviour). Since `Buffer` is what
+ * `fs.readFileSync`, `Buffer.from(hex, "hex")`, sockets and database drivers all
+ * hand back, a `slice()` here would silently alias the caller's memory for the
+ * most common input type: reusing or zeroing that buffer afterwards would mutate
+ * an already-parsed transaction or key.
+ */
+export function copyOf(src: Uint8Array, off: number, n: number): Uint8Array {
+  const out = new Uint8Array(n);
+  out.set(src.subarray(off, off + n));
+  return out;
+}
+
 /** Growable little-endian byte writer. */
 export class Writer {
   private buf = new Uint8Array(256);
@@ -141,8 +158,11 @@ export class Reader {
   }
 
   bytes(n: number): Uint8Array {
+    // A negative or fractional length would slip past `need` (which only checks
+    // the upper bound), read nothing, and then rewind the offset.
+    if (!Number.isInteger(n) || n < 0) throw new Error(`Reader: bad length ${n}`);
     this.need(n);
-    const out = this.data.slice(this.off, this.off + n);
+    const out = copyOf(this.data, this.off, n);
     this.off += n;
     return out;
   }

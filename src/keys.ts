@@ -32,6 +32,29 @@ export function isValidPublicKey(key: Uint8Array): boolean {
   }
 }
 
+/**
+ * Throw unless `key` is a 33-byte compressed secp256k1 point.
+ *
+ * Anything that turns a public key into an address or an output script must go
+ * through this. Length alone is not enough, and length is not even checked in the
+ * common mistake: passing a 32-byte private key where the public key was meant
+ * type-checks fine, since both are `Uint8Array`. The resulting address or script
+ * is well-formed and permanently unspendable, because no key hashes to it.
+ */
+export function assertCompressedPubKey(key: Uint8Array, who: string): void {
+  if (key.length !== 33) {
+    throw new Error(`${who}: public key must be 33 compressed bytes, got ${key.length}`);
+  }
+  if (key[0] !== 0x02 && key[0] !== 0x03) {
+    throw new Error(
+      `${who}: public key must start with 0x02 or 0x03, got 0x${key[0]!.toString(16).padStart(2, "0")}`,
+    );
+  }
+  if (!isValidPublicKey(key)) {
+    throw new Error(`${who}: public key is not a point on the secp256k1 curve`);
+  }
+}
+
 /** Big-endian 32-byte encoding of a scalar already reduced mod n. */
 export function scalarToBytes(x: bigint): Uint8Array {
   const out = new Uint8Array(32);

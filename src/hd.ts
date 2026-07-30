@@ -51,6 +51,7 @@
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import { base58Decode, checkDecode, checkEncode } from "./base58.js";
+import { copyOf } from "./bytes.js";
 import { hash160 } from "./hash.js";
 import {
   isValidPrivateKey,
@@ -353,16 +354,23 @@ export class ExtendedKey {
     return ExtendedKey.fromSerialized(data);
   }
 
-  /** Parse a raw 78-byte serialization (checksum already verified/absent). */
+  /**
+   * Parse a raw 78-byte serialization (checksum already verified/absent).
+   *
+   * Every field is copied out of `data`, so the returned key does not alias the
+   * caller's buffer — which matters most here, because a caller doing the right
+   * thing and wiping the serialization after parsing would otherwise destroy the
+   * key it just parsed. See {@link copyOf}.
+   */
   static fromSerialized(data: Uint8Array): ExtendedKey {
     if (data.length !== SERIALIZED_LENGTH) throw new Error("hd: bad serialized length");
     const version: [number, number, number, number] = [data[0]!, data[1]!, data[2]!, data[3]!];
     const depth = data[4]!;
-    const parentFingerprint = data.slice(5, 9);
+    const parentFingerprint = copyOf(data, 5, 4);
     const childNumber =
       ((data[9]! << 24) | (data[10]! << 16) | (data[11]! << 8) | data[12]!) >>> 0;
-    const chainCode = data.slice(13, 45);
-    const keyData = data.slice(45, 78);
+    const chainCode = copyOf(data, 13, 32);
+    const keyData = copyOf(data, 45, 33);
 
     const found = matchVersion(version);
     if (!found) throw new Error("hd: unknown extended-key version");
@@ -370,7 +378,7 @@ export class ExtendedKey {
 
     if (isPrivate) {
       if (keyData[0] !== 0x00) throw new Error("hd: bad private key prefix");
-      const priv = keyData.slice(1);
+      const priv = copyOf(keyData, 1, 32);
       if (!isValidPrivateKey(priv)) throw new Error("hd: invalid private key");
       return new ExtendedKey(
         network,

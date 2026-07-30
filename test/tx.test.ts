@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { outPointFromTxid, Transaction, TxTree } from "../src/tx.js";
+import {
+  MAX_SEQUENCE,
+  NULL_BLOCK_HEIGHT,
+  NULL_BLOCK_INDEX,
+  NULL_VALUE_IN,
+  outPointFromTxid,
+  Transaction,
+  TxTree,
+} from "../src/tx.js";
 import { Reader } from "../src/bytes.js";
 import { calcSignatureHash, SigHashType } from "../src/sighash.js";
 import { rawTxInSignature, signatureScript, signP2PKHInput, verifyHash } from "../src/sign.js";
@@ -37,9 +45,69 @@ describe("transaction wire format", () => {
     expect(bytesToHex(tx.serializeWitness())).toBe(vectors.tx.witnessSer);
   });
 
-  test("txid and full txid match dcrd", () => {
+  test("txid, witness txid and full txid match dcrd", () => {
     expect(tx.txid()).toBe(vectors.tx.txid);
+    expect(tx.witnessTxid()).toBe(vectors.tx.txidWitness);
     expect(tx.fullTxid()).toBe(vectors.tx.txidFull);
+  });
+
+  // The null witness sentinels are only observable in a transaction that does
+  // not set blockHeight/blockIndex explicitly, and every other vector does — so
+  // a wrong default sat unnoticed. This one comes from wire.NewTxIn.
+  test("addInput defaults match dcrd's wire.NewTxIn sentinels", () => {
+    const g = vectors.txNullWitness;
+    // dcrd's asymmetry: null height is 0, null index is 0xffffffff.
+    expect(String(NULL_VALUE_IN)).toBe(g.nullValueIn);
+    expect(String(NULL_BLOCK_HEIGHT)).toBe(g.nullBlockHeight);
+    expect(String(NULL_BLOCK_INDEX)).toBe(g.nullBlockIndex);
+    expect(String(MAX_SEQUENCE)).toBe(g.maxSequence);
+    expect(NULL_BLOCK_HEIGHT).not.toBe(NULL_BLOCK_INDEX);
+
+    const t = new Transaction();
+    t.version = 1;
+    const prevHash = hexToBytes(
+      "c672c1c5d15e58b9a5f1b6e2d3f4e5c6b7a8091011121314151617181920212a",
+    ).reverse();
+    t.addInput({ hash: prevHash, index: 0, tree: TxTree.Regular }); // no witness opts at all
+    t.addOutput(50000000n, payToPubKeyHashScript(hexToBytes(vectors.keys.pubkeyHash160)), 0);
+
+    expect(t.inputs[0]!.valueIn).toBe(NULL_VALUE_IN);
+    expect(t.inputs[0]!.blockHeight).toBe(NULL_BLOCK_HEIGHT);
+    expect(t.inputs[0]!.blockIndex).toBe(NULL_BLOCK_INDEX);
+    expect(bytesToHex(t.serialize()), "full").toBe(g.serialized);
+    expect(bytesToHex(t.serializePrefix()), "prefix").toBe(g.prefixSer);
+    expect(bytesToHex(t.serializeWitness()), "witness").toBe(g.witnessSer);
+    expect(t.txid(), "txid").toBe(g.txid);
+    expect(t.witnessTxid(), "witness txid").toBe(g.txidWitness);
+    expect(t.fullTxid(), "full txid").toBe(g.txidFull);
+  });
+
+  // 300 outputs: past the 0xfd varint discriminant and well past the writer's
+  // initial 256-byte buffer, neither of which any other vector reaches.
+  test("a 300-output transaction matches dcrd (multi-byte varint, writer growth)", () => {
+    const g = vectors.txBig;
+    const outScript = payToPubKeyHashScript(hexToBytes(vectors.keys.pubkeyHash160));
+    const t = new Transaction();
+    t.version = 1;
+    const prevHash = hexToBytes(
+      "c672c1c5d15e58b9a5f1b6e2d3f4e5c6b7a8091011121314151617181920212a",
+    ).reverse();
+    t.addInput(
+      { hash: prevHash, index: 1, tree: TxTree.Regular },
+      { sequence: MAX_SEQUENCE, valueIn: 1000000000n, blockHeight: 7, blockIndex: 8 },
+    );
+    for (let i = 0; i < g.numOutputs; i++) t.addOutput(BigInt(1000 + i), outScript, i % 3);
+
+    expect(t.outputs.length).toBe(300);
+    expect(bytesToHex(t.serialize()), "full").toBe(g.serialized);
+    expect(bytesToHex(t.serializePrefix()), "prefix").toBe(g.prefixSer);
+    expect(t.txid(), "txid").toBe(g.txid);
+    expect(t.witnessTxid(), "witness txid").toBe(g.txidWitness);
+    expect(t.fullTxid(), "full txid").toBe(g.txidFull);
+    // Round-trips, so the multi-byte varint is read back the same way.
+    expect(bytesToHex(Transaction.fromBytes(hexToBytes(g.serialized)).serialize())).toBe(
+      g.serialized,
+    );
   });
 
   test("rejects non-canonical varints (dcrd ErrNonCanonicalVarInt)", () => {
