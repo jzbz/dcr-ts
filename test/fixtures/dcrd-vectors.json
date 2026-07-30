@@ -156,6 +156,135 @@
       "path": "m/44'/42'/0'/0/0",
       "seedHex": "7b03a6c5e4032241607f9ebddcfb1a39587796b5d4f31231506f8eadcceb0a29"
     },
+    "mixedVariant": {
+      "network": "mainnet",
+      "programs": [
+        {
+          "steps": [
+            {
+              "index": 2147483692,
+              "strict": false
+            },
+            {
+              "index": 2147483690,
+              "strict": true
+            },
+            {
+              "index": 2147483648,
+              "strict": false
+            },
+            {
+              "index": 0,
+              "strict": false
+            },
+            {
+              "index": 0,
+              "strict": false
+            }
+          ],
+          "variants": "lslll",
+          "xprvs": [
+            "dprv3jFxRXgLcN2m7q2s5ChWciUFgW9UQvoHNir1Kvge47VJNi7cyrXpaeNkNhZvTPC2D6cMrdkP4kfcwBQxNw57y64hy8KPZQXoECkZET34ao1",
+            "dprv3mm9muJ1ojNvUgEjThTc23w4A4MDqDaUod1GGA16e7bmsusNufrrFujy2jnVNGEGoXdaBGMMergkXyrN5UvQE6pfH49JT4btcUB5jjSov5M",
+            "dprv3oygb5jeAw576GNeXPQNjR3omnMokptgRKbEMLhh4Co1wkBJLSsgkrgJ5hUwMmEjA31kt1hpmmPkU7ZxnUXaBkfJdEnjTm4BNcmbEwaFsm5",
+            "dprv3qZLoK44rP7tW4sdQVwNAuXDyAJauLjMWV3U9wiYvTY9RMvPJXyQgbfEQijDy8BADxJrjbUfcQLtzzjsVgCRWs8GHPdzjRhVVpJqBjwdzQq",
+            "dprv3t3tKRYfMefdakdRD4Nfx6oHpGX8Q2iEFCSx9H6X7vPpLuYwWcsM7UV8P3KAoLJdPoPrRXv4Cc2ioxogo49WjVrsXjGJ7L88ovEf29iKHtL"
+          ]
+        },
+        {
+          "steps": [
+            {
+              "index": 2147483692,
+              "strict": true
+            },
+            {
+              "index": 2147483690,
+              "strict": false
+            },
+            {
+              "index": 2147483648,
+              "strict": true
+            },
+            {
+              "index": 0,
+              "strict": true
+            },
+            {
+              "index": 0,
+              "strict": false
+            }
+          ],
+          "variants": "slssl",
+          "xprvs": [
+            "dprv3jFxRXgLcN2m7q2s5ChWciUFgW9UQvoHNir1Kvge47VJNi7cyrXpaeNkNhZvTPC2D6cMrdkP4kfcwBQxNw57y64hy8KPZQXoECkZET34ao1",
+            "dprv3mm9muJ1ojNvUgEjThTc23w4A4MDqDaUod1GGA16e7bmsusNufrrFujy2jnVNGEGoXdaBGMMergkXyrN5UvQE6pfH49JT4btcUB5jjSov5M",
+            "dprv3oygb5jeAw5768nwLyXhTiJkUtVfwpMo9zWP8bf4gmFFaoFpivEcwGoztAYgJeqyG8MjGmgv6R8SiboBqrCrCUS7P7gzFxxdoprhccpiX5Z",
+            "dprv3qxAonwF2KQTAcR4HCHNgo5DKEUKM7mPvPLsHHtMNMKcUXMgv1hNsYoTMcRmgtsTDyBEBAJqxDDVwVvSWDF9eQVLfTujAnpBxisaMqKmgNN",
+            "dprv3sWWTnrh7sHVDvNaSiCs6MD8bYuzo4h3mjYnefjigUScFNCar9JadwGrvNo1Kr5gzuv8Z19t4EaTk4dWoMySLXdXNxYL1vrzk29KQodGVKa"
+          ]
+        },
+        {
+          "steps": [
+            {
+              "index": 2147483649,
+              "strict": true
+            },
+            {
+              "index": 2147483650,
+              "strict": false
+            },
+            {
+              "index": 2147483651,
+              "strict": true
+            },
+            {
+              "index": 2147483652,
+              "strict": false
+            }
+          ],
+          "variants": "slsl",
+          "xprvs": [
+            "dprv3jFxRXgLcN2jDRit93JmgLvStQsufC8SHvPaq8n2pL25D6JF4aedApJTSRbNU7v99Twt7x1viPECYL1dxyBPqzVzUD9ZxLgBofqAHZSob2M",
+            "dprv3mgydNxdLPL8eaZZaMjHrCfbz4yeHVpm1xXUg77fvtV2fnzLQVbM32LmupBCNWQa7q47wLXVh1facQo9c8n5dxUyirNNn32XGm6dYbDHRuv",
+            "dprv3pHSmJHiZRf6U5kyDKp8xBx4iF6rLFyNX9gtGMmZWLxPngRLUxru8NNrWbE8QXrQMndEZx9Z2p91sVJzdXAoFw7spH3DajjNTMA4PxZs9e7",
+            "dprv3qn3rq8E6DaVyzPpVxtKHeGG81UDKqVdW8haH8Yx2kjRrWnrRmZTFCqACEXbpi18Uk15awcoeXoGZccUJABnQUSDnByGqPr5HBBQUFuZPWz"
+          ]
+        },
+        {
+          "steps": [
+            {
+              "index": 2147483692,
+              "strict": false
+            },
+            {
+              "index": 5,
+              "strict": false
+            },
+            {
+              "index": 2147483655,
+              "strict": true
+            },
+            {
+              "index": 9,
+              "strict": true
+            },
+            {
+              "index": 2147483659,
+              "strict": false
+            }
+          ],
+          "variants": "llssl",
+          "xprvs": [
+            "dprv3jFxRXgLcN2m7q2s5ChWciUFgW9UQvoHNir1Kvge47VJNi7cyrXpaeNkNhZvTPC2D6cMrdkP4kfcwBQxNw57y64hy8KPZQXoECkZET34ao1",
+            "dprv3mm9muHsU4qvgjXjq5fGatYcjidcSmrqBQsR92x2PQ3VQLvCCAF3YzL2tWQc8mqJnLc2YBGFEQM41gdAHNgFGYU8yV6G8FHoauXy5ejaCjk",
+            "dprv3oqKyT73tgdaoMJffnQbDNS87bSQa3re73BZsUKJ5n5YfdXLnqMXYDTTdALD3HgATomh8LFFLxktxCZ4zHntie9dX47puFAePWm17uCkDck",
+            "dprv3qTFKTb3om6a6imZn9FQhjf65NuE7PPpcbqfTj1zDTLiohqBpGSnzXoMqW8YktM5xu1ZC9V3Y2qQbLjVsNcyjdkaF21gXWzZm2Hs1EbfZZd",
+            "dprv3sXfvEtCUyrQjMJMRFWXteLHMWxTpqBV6q84eyjbYowJd1sPzWqJ3c6JMwoaALXafp2YA2vqRk8PxrnVndEPX4Yr6dC9SXHGHqwXRvXrwCt"
+          ]
+        }
+      ],
+      "seedHex": "5800b9d0e7fe152c435a71889fb6cde4fb122940576e859cb3cae1f80f263d54"
+    },
     "nets": {
       "mainnet": {
         "childAddr": "DsUobw8mjYbXT9BrrwkNt5NaUveJyqiBDtc",

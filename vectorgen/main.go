@@ -65,6 +65,17 @@ const edPrivHex = "0ef02ca348c524e6392655ba4d29603cd1a7347d9d65cfe93ce1ebffdca22
 // because the leading-zero key's own dprv is identical either way.
 const leadingZeroSeedHex = "7b03a6c5e4032241607f9ebddcfb1a39587796b5d4f31231506f8eadcceb0a29"
 
+// A seed where alternating the two derivation variants along one path diverges.
+// Found by sweeping seeds in Go: it needs an intermediate key that dcrd stores
+// stripped, followed by a hardened step requested in the *other* variant.
+const mixedVariantSeedHex = "5800b9d0e7fe152c435a71889fb6cde4fb122940576e859cb3cae1f80f263d54"
+
+// Shorthand for the hardened offset, used by the mixed-variant programs.
+const (
+	H   = hdkeychain.HardenedKeyStart
+	H44 = hdkeychain.HardenedKeyStart + 44
+)
+
 type NetConst struct {
 	Name                 string `json:"name"`
 	Net                  uint32 `json:"net"`
@@ -318,6 +329,9 @@ func main() {
 		lzStrict, err = lzStrict.ChildBIP32Std(idx)
 		ck(err)
 	}
+	lzMasterMixed, err := hdkeychain.NewMaster(mustHex(mixedVariantSeedHex), mp0)
+	ck(err)
+
 	lzMid, err := lzMaster.Child(hdkeychain.HardenedKeyStart + 44)
 	ck(err)
 	lzMidPriv, err := lzMid.SerializedPrivKey()
@@ -328,6 +342,52 @@ func main() {
 	lzStrictPkh := dcrutil.Hash160(lzStrict.SerializedPubKey())
 	lzStrictAddr, err := stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(lzStrictPkh, mp0)
 	ck(err)
+	// Mixing the two variants along one path. `strictBIP32` in dcrd controls only
+	// whether the *derived child* is stripped; how the *parent* is read is decided
+	// by how that parent is stored (`copy(data[1:], k.key)` makes no reference to
+	// the flag). Getting that backwards produces correct keys for pure-legacy and
+	// pure-strict paths and wrong ones only where the variants alternate, which is
+	// invisible to any single-variant vector. Each program below is emitted with
+	// the key after every step, so a divergence is caught at the step it happens.
+	type mixedStep struct {
+		Index  uint32 `json:"index"`
+		Strict bool   `json:"strict"`
+	}
+	mixedPrograms := [][]mixedStep{
+		{{H44, false}, {H + 42, true}, {H, false}, {0, false}, {0, false}},
+		{{H44, true}, {H + 42, false}, {H, true}, {0, true}, {0, false}},
+		{{H + 1, true}, {H + 2, false}, {H + 3, true}, {H + 4, false}},
+		{{H44, false}, {5, false}, {H + 7, true}, {9, true}, {H + 11, false}},
+	}
+	var mixedOut []map[string]interface{}
+	for _, prog := range mixedPrograms {
+		k := lzMasterMixed
+		var xprvs []string
+		var label string
+		for _, st := range prog {
+			var e error
+			if st.Strict {
+				k, e = k.ChildBIP32Std(st.Index)
+				label += "s"
+			} else {
+				k, e = k.Child(st.Index)
+				label += "l"
+			}
+			ck(e)
+			xprvs = append(xprvs, k.String())
+		}
+		mixedOut = append(mixedOut, map[string]interface{}{
+			"steps":    prog,
+			"variants": label,
+			"xprvs":    xprvs,
+		})
+	}
+	hdOut["mixedVariant"] = map[string]interface{}{
+		"seedHex":  mixedVariantSeedHex,
+		"network":  mp0.Name,
+		"programs": mixedOut,
+	}
+
 	hdOut["leadingZero"] = map[string]interface{}{
 		"seedHex": leadingZeroSeedHex,
 		"network": mp0.Name,

@@ -76,8 +76,15 @@ export function sigHashPrefixAll(tx: Transaction): Uint8Array {
  * `cachedPrefix` is an optional pre-computed prefix hash from
  * {@link sigHashPrefixAll}, honoured only for `SigHashAll` without
  * `AnyOneCanPay` — the one case where the prefix half is input-independent. It is
- * ignored for every other hash type rather than trusted, so passing it
- * unconditionally is safe.
+ * ignored for every other hash type rather than trusted, so it is safe to pass
+ * for *any hash type*.
+ *
+ * It is **not** checked against `tx`, because a 32-byte hash carries nothing to
+ * check it with: it must be this transaction's current prefix hash. Passing a
+ * stale one — taken before the prefix was changed, or from a different
+ * transaction — silently produces a signature over the wrong message. Take it
+ * from the transaction you are about to sign, after the prefix is final, or use
+ * {@link signP2PKHInputs}, which does that for you.
  */
 export function calcSignatureHash(
   subScript: Uint8Array,

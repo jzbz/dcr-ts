@@ -100,6 +100,42 @@ describe("parsed values never alias a caller's Buffer", () => {
     expect(() => tx.addInput(outPointFromTxid("11".repeat(32), 0))).not.toThrow();
   });
 
+  test("ExtendedKey hands out no view into its own state", () => {
+    // Memoizing identifier() turned a per-call throwaway digest into long-lived
+    // shared state, and deriveInner passes fingerprint() straight into each child
+    // as parentFingerprint — so a view would let one caller's write corrupt the
+    // cache, this key's own fingerprint, every sibling and every later child.
+    const parent = ExtendedKey.fromSeed(new Uint8Array(32).fill(4), networks.mainnet);
+    const childA = parent.derive(0);
+    const childB = parent.derive(1);
+    const fp = bytesToHex(parent.fingerprint());
+    const id = bytesToHex(parent.identifier());
+    const bFp = bytesToHex(childB.parentFingerprint);
+
+    // Scribble on every array the key hands out.
+    childA.parentFingerprint[0] = 0xff;
+    parent.fingerprint()[1] = 0xff;
+    parent.identifier()[2] = 0xff;
+    parent.publicKey()[3] = 0xff;
+    parent.privateKeyBytes()[4] = 0xff;
+    parent.chainCode[5] = 0xff;
+    parent.serialize()[13] = 0xff;
+
+    expect(bytesToHex(parent.fingerprint()), "fingerprint").toBe(fp);
+    expect(bytesToHex(parent.identifier()), "identifier").toBe(id);
+    expect(bytesToHex(childB.parentFingerprint), "sibling parentFingerprint").toBe(bFp);
+    expect(bytesToHex(parent.derive(2).parentFingerprint), "later child").toBe(fp);
+  });
+
+  test("mutating chainCode cannot change what a key derives", () => {
+    const key = ExtendedKey.fromSeed(new Uint8Array(32).fill(5), networks.mainnet);
+    const before = key.derive(0).toString();
+    const cc = key.chainCode;
+    cc[0] = cc[0]! ^ 0xff;
+    key.chainCode.fill(0);
+    expect(key.derive(0).toString()).toBe(before);
+  });
+
   test("Reader.bytes rejects a negative or fractional length", () => {
     // A negative length slipped past the upper-bound check, read nothing, and
     // rewound the offset.

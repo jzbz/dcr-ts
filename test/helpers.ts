@@ -59,6 +59,7 @@ export interface DcrdVectors {
     seedHex: string;
     nets: Record<string, HdVec>;
     leadingZero: LeadingZeroVec;
+    mixedVariant: MixedVariantVec;
   };
   tx: {
     serialized: string;
@@ -151,6 +152,23 @@ export interface NetConst {
   hdPublicKeyID: string;
   slip0044CoinType: number;
   legacyCoinType: number;
+}
+
+/**
+ * Paths that alternate the Decred and strict-BIP32 derivation variants, with the
+ * extended key after every step. Pure-variant paths cannot detect a mix-up in
+ * which of parent-read and child-strip the variant flag governs.
+ */
+export interface MixedVariantVec {
+  seedHex: string;
+  network: string;
+  programs: Array<{
+    steps: Array<{ index: number; strict: boolean }>;
+    /** One char per step: `l` legacy/Decred, `s` strict BIP32. */
+    variants: string;
+    /** The extended private key after each step. */
+    xprvs: string[];
+  }>;
 }
 
 export interface WifVec {

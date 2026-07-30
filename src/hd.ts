@@ -117,9 +117,9 @@ export class ExtendedKey {
     private readonly privateKey: Uint8Array | null,
     /** 33-byte compressed public key. */
     private readonly compressedPublicKey: Uint8Array,
-    readonly chainCode: Uint8Array,
+    private readonly chainCodeBytes: Uint8Array,
     readonly depth: number,
-    readonly parentFingerprint: Uint8Array,
+    private readonly parentFingerprintBytes: Uint8Array,
     readonly childNumber: number,
     /**
      * Whether dcrd would be holding this scalar with its leading zero bytes
@@ -176,24 +176,43 @@ export class ExtendedKey {
   }
 
   /**
+   * The 32-byte chain code. A copy: the key's own derivation reads the internal
+   * bytes, so handing out a live view would let a caller change what this key
+   * derives.
+   */
+  get chainCode(): Uint8Array {
+    return copyOf(this.chainCodeBytes, 0, 32);
+  }
+
+  /** The parent's 4-byte fingerprint, or four zero bytes for a master key. A copy. */
+  get parentFingerprint(): Uint8Array {
+    return copyOf(this.parentFingerprintBytes, 0, 4);
+  }
+
+  /**
    * Identifier = hash160(compressed pubkey); the fingerprint is its first 4 bytes.
    *
-   * Memoized: `derive` needs the parent fingerprint for every child, so deriving a
-   * chain of addresses otherwise recomputes a BLAKE-256 plus a RIPEMD-160 of the
-   * same key on every step. The key is immutable, so the digest cannot go stale.
+   * Memoized, because `derive` needs the parent fingerprint for every child and
+   * would otherwise recompute a BLAKE-256 plus a RIPEMD-160 of the same key at
+   * every step. Both accessors return copies: the memo turned what used to be a
+   * per-call throwaway digest into long-lived shared state, so handing out a view
+   * would let one caller's write corrupt the cache, this key's own fingerprint,
+   * every sibling's `parentFingerprint` and every child derived afterwards.
    */
   identifier(): Uint8Array {
-    if (this.cachedIdentifier === undefined) {
-      this.cachedIdentifier = hash160(this.compressedPublicKey);
-    }
-    return this.cachedIdentifier.slice();
+    return copyOf(this.identifierBytes(), 0, 20);
   }
 
   fingerprint(): Uint8Array {
+    return copyOf(this.identifierBytes(), 0, 4);
+  }
+
+  /** The memoized digest itself. Never escapes this class. */
+  private identifierBytes(): Uint8Array {
     if (this.cachedIdentifier === undefined) {
       this.cachedIdentifier = hash160(this.compressedPublicKey);
     }
-    return this.cachedIdentifier.subarray(0, 4);
+    return this.cachedIdentifier;
   }
 
   /**
@@ -247,7 +266,13 @@ export class ExtendedKey {
       //   Decred:  0x00 ‖ key31 ‖ 0x00 ‖ ser32(i)
       //
       // Same length, different bytes — hence a different child.
-      const skip = strictBip32 || !this.scalarStripped ? 0 : leadingZeros(this.privateKey);
+      //
+      // How the PARENT is read depends only on how the parent is stored, never on
+      // which variant is being requested: dcrd's `copy(data[1:], k.key)` makes no
+      // reference to its strictBIP32 flag, which gates only whether the *child*
+      // it derives gets stripped. Letting `strictBip32` suppress this would make
+      // derive(a).deriveBip32Std(b) disagree with dcrd's Child(a).ChildBIP32Std(b).
+      const skip = this.scalarStripped ? leadingZeros(this.privateKey) : 0;
       data.set(this.privateKey.subarray(skip), 1);
     } else {
       // Non-hardened derivation commits to the public key, which is unchanged by
@@ -256,7 +281,7 @@ export class ExtendedKey {
     }
     data.set(ser32(idx), 33);
 
-    const I = hmac(sha512, this.chainCode, data);
+    const I = hmac(sha512, this.chainCodeBytes, data);
     const il = I.subarray(0, 32);
     const childChainCode = I.subarray(32, 64).slice();
     const parentFp = this.fingerprint();
@@ -345,9 +370,9 @@ export class ExtendedKey {
       false,
       null,
       this.compressedPublicKey,
-      this.chainCode,
+      this.chainCodeBytes,
       this.depth,
-      this.parentFingerprint,
+      this.parentFingerprintBytes,
       this.childNumber,
     );
   }
@@ -366,9 +391,9 @@ export class ExtendedKey {
     out[2] = version[2];
     out[3] = version[3];
     out[4] = this.depth & 0xff;
-    out.set(this.parentFingerprint, 5);
+    out.set(this.parentFingerprintBytes, 5);
     out.set(ser32(this.childNumber), 9);
-    out.set(this.chainCode, 13);
+    out.set(this.chainCodeBytes, 13);
     if (this.isPrivate) {
       out[45] = 0x00;
       out.set(this.privateKey!, 46);
