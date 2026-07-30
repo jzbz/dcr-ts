@@ -1,14 +1,52 @@
 /**
  * BIP32 hierarchical-deterministic keys, Decred serialization.
  *
- * The derivation math is standard BIP32 (HMAC-SHA512, secp256k1), but the
- * serialized form uses Decred's four-byte version identifiers (`dprv`/`dpub`
- * on mainnet, `tprv`/`tpub` on testnet, …) and the double-BLAKE-256 base58check
- * checksum. Both private (signer) and public (watch-only) derivation are
- * supported.
+ * The serialized form uses Decred's four-byte version identifiers
+ * (`dprv`/`dpub` on mainnet, `tprv`/`tpub` on testnet, …) and the
+ * double-BLAKE-256 base58check checksum. Both private (signer) and public
+ * (watch-only) derivation are supported.
  *
  * The seed → master-key HMAC still keys on the literal string "Bitcoin seed",
  * which Decred kept for compatibility.
+ *
+ * # Hardened derivation is not plain BIP32
+ *
+ * Decred also differs in the hardened child function, and the difference is
+ * load-bearing. dcrd's `hdkeychain` strips leading zero bytes from a derived
+ * private key and carries the shortened string into the next hardened HMAC
+ * (`hdkeychain/extendedkey.go`):
+ *
+ * > Note that per [BIP32] this should be the fully zero-padded 32-bytes,
+ * > however, the Decred variation strips leading zeros for legacy reasons and
+ * > changing it now would break derivation for a lot of Decred wallets that
+ * > rely on this behavior.
+ *
+ * So for a parent scalar with a leading zero byte the hardened HMAC input is
+ * `0x00 ‖ key31 ‖ 0x00 ‖ ser32(i)` rather than BIP32's
+ * `0x00 ‖ 0x00 ‖ key31 ‖ ser32(i)` — the same length, different bytes, and
+ * every descendant diverges. About 1 seed in 112 is affected on a BIP44 path.
+ *
+ * dcrd exposes both (`Child` legacy, `ChildBIP32Std` strict) and dcrwallet uses
+ * the legacy one for the entire wallet path, so {@link ExtendedKey.derive} and
+ * {@link ExtendedKey.derivePath} are the Decred variant. Strict BIP32 is
+ * available as {@link ExtendedKey.deriveBip32Std} /
+ * {@link ExtendedKey.derivePathBip32Std}.
+ *
+ * Getting this wrong is silent: a signer that derived strictly would show a user
+ * restoring their Decrediton seed a different, empty wallet, with coins sent to
+ * its addresses invisible to every other Decred wallet holding the same phrase.
+ *
+ * Two consequences worth knowing:
+ *
+ * - **Public (non-hardened) derivation is unaffected** — there is no private key
+ *   to strip, and a stripped scalar has the same value and therefore the same
+ *   public key. An account `dpub` and every address below it agree between the
+ *   two variants.
+ * - **The stripped state does not survive serialization.** dcrd pads the scalar
+ *   back to 32 bytes in the extended-key string, so a key round-tripped through
+ *   `dprv` derives strictly from then on — in dcrd too, which this mirrors.
+ *   Only hardened steps are affected, and in BIP44 the deepest hardened level is
+ *   the account key, so this rarely shows up in practice.
  */
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
@@ -31,8 +69,17 @@ export const HARDENED_OFFSET = 0x80000000;
 const MASTER_HMAC_KEY = new TextEncoder().encode("Bitcoin seed");
 const SERIALIZED_LENGTH = 78;
 
-/** Mark a BIP44 child index as hardened. */
+/**
+ * Mark a BIP44 child index as hardened.
+ *
+ * Rejects anything outside `0..2^31-1`: adding the offset to an already-hardened
+ * or out-of-range index wraps, and the result would be a *non*-hardened index
+ * silently derived from the wrong branch.
+ */
 export function hardened(index: number): number {
+  if (!Number.isInteger(index) || index < 0 || index >= HARDENED_OFFSET) {
+    throw new Error(`hd: hardened index must be an integer in 0..2^31-1, got ${index}`);
+  }
   return (index + HARDENED_OFFSET) >>> 0;
 }
 
@@ -43,6 +90,13 @@ function ser32(value: number): Uint8Array {
     (value >>> 8) & 0xff,
     value & 0xff,
   );
+}
+
+/** Number of leading 0x00 bytes, i.e. how many dcrd's `child` would strip. */
+function leadingZeros(key: Uint8Array): number {
+  let n = 0;
+  while (n < key.length && key[n] === 0) n++;
+  return n;
 }
 
 /** A BIP32 extended key with Decred version bytes. */
@@ -58,6 +112,16 @@ export class ExtendedKey {
     readonly depth: number,
     readonly parentFingerprint: Uint8Array,
     readonly childNumber: number,
+    /**
+     * Whether dcrd would be holding this scalar with its leading zero bytes
+     * stripped, which changes the hardened HMAC input of its children (see the
+     * module docs). True only for keys produced by {@link derive} — dcrd strips
+     * in `child` alone, so a master key from `fromSeed` and a key parsed by
+     * `fromSerialized` are both held at full width, exactly as `NewMaster` and
+     * `NewKeyFromString` do. The scalar itself is always stored padded to 32
+     * bytes here; only the HMAC input is narrowed.
+     */
+    private readonly scalarStripped: boolean = false,
   ) {}
 
   /** Derive a master key from a BIP32 seed (16–64 bytes). */
@@ -101,10 +165,40 @@ export class ExtendedKey {
     return this.identifier().subarray(0, 4);
   }
 
-  /** Derive a child key by index. Use {@link hardened} for hardened indices. */
+  /**
+   * Derive a child key by index, the **Decred way** — the equivalent of dcrd
+   * `hdkeychain.Child`, and what dcrwallet and Decrediton derive with for the
+   * whole wallet path. Use {@link hardened} for hardened indices.
+   *
+   * This is the default because it is what the Decred ecosystem derives; see
+   * {@link deriveBip32Std} for the strict form and the module docs for why they
+   * differ.
+   */
   derive(index: number): ExtendedKey {
-    // The serialized depth is a single byte; dcrd errors past 255 as well.
+    return this.deriveInner(index, false);
+  }
+
+  /**
+   * Derive a child key by **strict BIP32** — the equivalent of dcrd
+   * `hdkeychain.ChildBIP32Std`, retaining the leading zero bytes of the parent
+   * private key that {@link derive} strips.
+   *
+   * Produces different hardened children from {@link derive} for any parent
+   * scalar with a leading zero byte, which is about 1 key in 256 at each
+   * hardened step. Use it only when strict BIP32 is what you want; anything that
+   * has to agree with a dcrwallet or Decrediton seed must not.
+   */
+  deriveBip32Std(index: number): ExtendedKey {
+    return this.deriveInner(index, true);
+  }
+
+  private deriveInner(index: number, strictBip32: boolean): ExtendedKey {
+    // The serialized depth is a single byte, so refuse to go past what can be
+    // round-tripped. (dcrd keeps depth as a uint16 and serializes depth%256, so
+    // it will happily derive further and wrap; this is the stricter choice.)
     if (this.depth >= 255) throw new Error("hd: cannot derive beyond depth 255");
+    if (!Number.isInteger(index)) throw new Error(`hd: index must be an integer, got ${index}`);
+    if (index < 0 || index > 0xffffffff) throw new Error(`hd: index ${index} out of range`);
     const idx = index >>> 0;
     const isHardened = idx >= HARDENED_OFFSET;
 
@@ -113,9 +207,20 @@ export class ExtendedKey {
       if (!this.privateKey) {
         throw new Error("hd: cannot derive a hardened child from a public key");
       }
-      data[0] = 0x00;
-      data.set(this.privateKey, 1);
+      // dcrd zeroes a 37-byte buffer, copies the parent scalar in at offset 1
+      // and writes ser32(index) at offset 33. In the Decred variant the stored
+      // scalar has had its leading zero bytes stripped, so it lands
+      // LEFT-aligned at offset 1 and the gap before ser32(index) stays zero:
+      //
+      //   strict:  0x00 ‖ 0x00 ‖ key31 ‖ ser32(i)
+      //   Decred:  0x00 ‖ key31 ‖ 0x00 ‖ ser32(i)
+      //
+      // Same length, different bytes — hence a different child.
+      const skip = strictBip32 || !this.scalarStripped ? 0 : leadingZeros(this.privateKey);
+      data.set(this.privateKey.subarray(skip), 1);
     } else {
+      // Non-hardened derivation commits to the public key, which is unchanged by
+      // stripping (a stripped scalar has the same value), so both variants agree.
       data.set(this.compressedPublicKey, 0);
     }
     data.set(ser32(idx), 33);
@@ -138,6 +243,9 @@ export class ExtendedKey {
         childDepth,
         parentFp,
         idx,
+        // dcrd's `child` strips the derived scalar unless strict BIP32 was asked
+        // for, and that state is what the next hardened step reads.
+        !strictBip32,
       );
     }
 
@@ -156,12 +264,25 @@ export class ExtendedKey {
   }
 
   /**
-   * Derive along a path like `m/44'/42'/0'/0/0`. An apostrophe or `h` marks a
-   * hardened index.
+   * Derive along a path like `m/44'/42'/0'/0/0`, the **Decred way** (see
+   * {@link derive}). An apostrophe or `h` marks a hardened index.
    */
   derivePath(path: string): ExtendedKey {
+    return this.derivePathInner(path, false);
+  }
+
+  /**
+   * Derive along a path using **strict BIP32** (see {@link deriveBip32Std}).
+   * Diverges from {@link derivePath} below any hardened step whose parent scalar
+   * has a leading zero byte, so do not use it to reproduce a wallet seed.
+   */
+  derivePathBip32Std(path: string): ExtendedKey {
+    return this.derivePathInner(path, true);
+  }
+
+  private derivePathInner(path: string, strictBip32: boolean): ExtendedKey {
     const parts = path.trim().split("/");
-    if (parts[0] === "m" || parts[0] === "M") parts.shift();
+    if (parts[0] === "m") parts.shift();
     let key: ExtendedKey = this;
     for (const raw of parts) {
       const isH = raw.endsWith("'") || raw.endsWith("h") || raw.endsWith("H");
@@ -174,7 +295,8 @@ export class ExtendedKey {
       if (n >= HARDENED_OFFSET) {
         throw new Error(`hd: path index ${n} out of range`);
       }
-      key = key.derive(isH ? hardened(n) : n);
+      const idx = isH ? hardened(n) : n;
+      key = strictBip32 ? key.deriveBip32Std(idx) : key.derive(idx);
     }
     return key;
   }

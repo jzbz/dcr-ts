@@ -33,7 +33,8 @@ only the Decred-specific glue:
   alternative signature suites.
 - **HD keys** — BIP32 with Decred's `dprv`/`dpub` (and `tprv`/`sprv`/`rprv`…)
   version bytes and base58check checksum; private (signer) and public
-  (watch-only) derivation.
+  (watch-only) derivation. Hardened derivation follows **Decred's variation on
+  BIP32, not BIP32 itself** — see below.
 - **Transactions** — the dcrd `MsgTx` wire format (prefix ‖ witness), byte-exact
   serialize/parse, and all three txid variants.
 - **Signing** — the Decred signature hash (not Bitcoin's BIP143) and
@@ -109,6 +110,52 @@ import { dcrToAtoms, atomsToDcr } from "dcr-ts";
 dcrToAtoms("1.5");        // 150000000n
 atomsToDcr(150_000_000n); // "1.50000000"
 ```
+
+## Hardened derivation is not plain BIP32
+
+Decred deviates from BIP32 in the hardened child function, and the difference is
+load-bearing. dcrd's `hdkeychain` strips leading zero bytes from a derived
+private key and carries the shortened string into the next hardened HMAC:
+
+> Note that per [BIP32] this should be the fully zero-padded 32-bytes, however,
+> the Decred variation strips leading zeros for legacy reasons and changing it
+> now would break derivation for a lot of Decred wallets that rely on this
+> behavior.
+
+So for a parent scalar with a leading zero byte the hardened HMAC input is
+`0x00 ‖ key31 ‖ 0x00 ‖ ser32(i)` rather than BIP32's
+`0x00 ‖ 0x00 ‖ key31 ‖ ser32(i)` — the same length, different bytes, and every
+descendant diverges. About **1 seed in 112** is affected on a BIP44 path.
+
+dcrd exposes both variants and dcrwallet uses the legacy one for the entire
+wallet path, so this library mirrors that:
+
+```ts
+key.derive(0);            // Decred variant — dcrd Child, what wallets use
+key.derivePath("m/44'/42'/0'/0/0");
+
+key.deriveBip32Std(0);    // strict BIP32 — dcrd ChildBIP32Std
+key.derivePathBip32Std("m/44'/42'/0'/0/0");
+```
+
+Use the strict form only when strict BIP32 is genuinely what you want. Anything
+that has to agree with a Decrediton or dcrwallet seed must not: getting it wrong
+is silent, showing the user a different, empty wallet with coins sent to its
+addresses invisible to every other Decred wallet holding the same phrase.
+
+Two consequences worth knowing:
+
+- **Public (non-hardened) derivation is unaffected.** There is no private key to
+  strip, and a stripped scalar has the same value and therefore the same public
+  key, so an account `dpub` and every address below it agree between variants.
+- **The stripped state does not survive serialization.** dcrd pads the scalar
+  back out in the extended-key string, so a key round-tripped through `dprv`
+  derives strictly from then on — in dcrd too, which this mirrors. Only hardened
+  steps are affected, and in BIP44 the deepest hardened level is the account key,
+  so it rarely shows up in practice.
+
+Both variants are pinned against dcrd-generated vectors from a seed chosen to
+make them disagree (`hd.leadingZero` in the fixture).
 
 ## Development
 
