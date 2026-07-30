@@ -125,14 +125,17 @@ export function scriptParses(script: Uint8Array): boolean {
 /** Build a P2PKH script: `OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG`. */
 export function payToPubKeyHashScript(hash160: Uint8Array): Uint8Array {
   if (hash160.length !== 20) throw new Error("payToPubKeyHash: hash must be 20 bytes");
-  return Uint8Array.from([
-    OP.DUP,
-    OP.HASH160,
-    OP.DATA_20,
-    ...hash160,
-    OP.EQUALVERIFY,
-    OP.CHECKSIG,
-  ]);
+  // Preallocate and `set` rather than spreading through a JS number array, which
+  // measured several times slower. Scripts are built once per output, so this is
+  // on the hot path for any wallet assembling many transactions.
+  const out = new Uint8Array(25);
+  out[0] = OP.DUP;
+  out[1] = OP.HASH160;
+  out[2] = OP.DATA_20;
+  out.set(hash160, 3);
+  out[23] = OP.EQUALVERIFY;
+  out[24] = OP.CHECKSIG;
+  return out;
 }
 
 /**
@@ -143,21 +146,26 @@ export function payToPubKeyHashScript(hash160: Uint8Array): Uint8Array {
 export function payToPubKeyHashAltScript(hash160: Uint8Array, sigType: 1 | 2): Uint8Array {
   if (hash160.length !== 20) throw new Error("payToPubKeyHashAlt: hash must be 20 bytes");
   if (sigType !== 1 && sigType !== 2) throw new Error("payToPubKeyHashAlt: bad sigType");
-  return Uint8Array.from([
-    OP.DUP,
-    OP.HASH160,
-    OP.DATA_20,
-    ...hash160,
-    OP.EQUALVERIFY,
-    sigType === 1 ? OP.OP_1 : OP.OP_2,
-    OP.CHECKSIGALT,
-  ]);
+  const out = new Uint8Array(26);
+  out[0] = OP.DUP;
+  out[1] = OP.HASH160;
+  out[2] = OP.DATA_20;
+  out.set(hash160, 3);
+  out[23] = OP.EQUALVERIFY;
+  out[24] = sigType === 1 ? OP.OP_1 : OP.OP_2;
+  out[25] = OP.CHECKSIGALT;
+  return out;
 }
 
 /** Build a P2SH script: `OP_HASH160 <20-byte hash> OP_EQUAL`. */
 export function payToScriptHashScript(hash160: Uint8Array): Uint8Array {
   if (hash160.length !== 20) throw new Error("payToScriptHash: hash must be 20 bytes");
-  return Uint8Array.from([OP.HASH160, OP.DATA_20, ...hash160, OP.EQUAL]);
+  const out = new Uint8Array(23);
+  out[0] = OP.HASH160;
+  out[1] = OP.DATA_20;
+  out.set(hash160, 2);
+  out[22] = OP.EQUAL;
+  return out;
 }
 
 /**
@@ -170,7 +178,11 @@ export function payToScriptHashScript(hash160: Uint8Array): Uint8Array {
  */
 export function payToPubKeyScript(compressedPubKey: Uint8Array): Uint8Array {
   assertCompressedPubKey(compressedPubKey, "payToPubKey");
-  return Uint8Array.from([OP.DATA_33, ...compressedPubKey, OP.CHECKSIG]);
+  const out = new Uint8Array(35);
+  out[0] = OP.DATA_33;
+  out.set(compressedPubKey, 1);
+  out[34] = OP.CHECKSIG;
+  return out;
 }
 
 /** True when `script` is a canonical version-0 P2PKH template. */

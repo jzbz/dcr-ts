@@ -120,6 +120,28 @@ dcrToAtoms("1.5");        // 150000000n
 atomsToDcr(150_000_000n); // "1.50000000"
 ```
 
+### Signing several inputs
+
+`calcSignatureHash` re-serializes and re-hashes the whole transaction prefix per
+call, so signing N inputs one at a time is O(N²). Under `SigHashAll` the prefix
+half does not depend on which input is being signed, so `signP2PKHInputs`
+computes it once — the same thing dcrd's `cachedPrefix` argument is for:
+
+```ts
+import { signP2PKHInputs } from "dcr-ts";
+
+signP2PKHInputs(tx, [
+  { idx: 0, subScript: prevScript0, privateKey: key0 },
+  { idx: 1, subScript: prevScript1, privateKey: key1 },
+]);
+```
+
+Byte-identical to calling `signP2PKHInput` per input. On the hashing alone this
+is 12–26x for 50–1000 inputs; end to end the win is smaller (1.7x at 250 inputs)
+because ECDSA dominates. `calcSignatureHash` also takes an optional
+`cachedPrefix` from `sigHashPrefixAll(tx)` if you are building signature scripts
+yourself.
+
 ## Hardened derivation is not plain BIP32
 
 Decred deviates from BIP32 in the hardened child function, and the difference is

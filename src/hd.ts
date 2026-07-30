@@ -56,9 +56,11 @@ import { hash160 } from "./hash.js";
 import {
   isValidPrivateKey,
   isValidPublicKey,
+  parsePublicKeyPoint,
   privateKeyTweakAdd,
   publicKeyFromPrivate,
-  publicKeyTweakAdd,
+  publicKeyTweakAddPoint,
+  type PublicKeyPoint,
 } from "./keys.js";
 import type { Network } from "./networks.js";
 import { networks } from "./networks.js";
@@ -131,6 +133,16 @@ export class ExtendedKey {
     private readonly scalarStripped: boolean = false,
   ) {}
 
+  /** Memoized hash160 of the public key; see {@link identifier}. */
+  private cachedIdentifier: Uint8Array | undefined = undefined;
+
+  /**
+   * Memoized decompression of {@link compressedPublicKey}, so deriving a chain of
+   * public children does the modular square root once instead of per step. Only
+   * populated on the public-derivation path.
+   */
+  private cachedPoint: PublicKeyPoint | undefined = undefined;
+
   /** Derive a master key from a BIP32 seed (16–64 bytes). */
   static fromSeed(seed: Uint8Array, network: Network): ExtendedKey {
     if (seed.length < 16 || seed.length > 64) {
@@ -163,13 +175,25 @@ export class ExtendedKey {
     return this.privateKey.slice();
   }
 
-  /** Identifier = hash160(compressed pubkey); the fingerprint is its first 4 bytes. */
+  /**
+   * Identifier = hash160(compressed pubkey); the fingerprint is its first 4 bytes.
+   *
+   * Memoized: `derive` needs the parent fingerprint for every child, so deriving a
+   * chain of addresses otherwise recomputes a BLAKE-256 plus a RIPEMD-160 of the
+   * same key on every step. The key is immutable, so the digest cannot go stale.
+   */
   identifier(): Uint8Array {
-    return hash160(this.compressedPublicKey);
+    if (this.cachedIdentifier === undefined) {
+      this.cachedIdentifier = hash160(this.compressedPublicKey);
+    }
+    return this.cachedIdentifier.slice();
   }
 
   fingerprint(): Uint8Array {
-    return this.identifier().subarray(0, 4);
+    if (this.cachedIdentifier === undefined) {
+      this.cachedIdentifier = hash160(this.compressedPublicKey);
+    }
+    return this.cachedIdentifier.subarray(0, 4);
   }
 
   /**
@@ -256,7 +280,12 @@ export class ExtendedKey {
       );
     }
 
-    const childPub = publicKeyTweakAdd(this.compressedPublicKey, il);
+    if (this.cachedPoint === undefined) {
+      const parsed = parsePublicKeyPoint(this.compressedPublicKey);
+      if (parsed === null) throw new Error("hd: public key is not a valid curve point");
+      this.cachedPoint = parsed;
+    }
+    const childPub = publicKeyTweakAddPoint(this.cachedPoint, il);
     if (!childPub) throw new Error("hd: invalid child key (retry with next index)");
     return new ExtendedKey(
       this.network,

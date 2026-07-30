@@ -47,10 +47,6 @@ export const BLAKE256_DIGEST_LENGTH = 32;
 /** The BLAKE-256 block length in bytes. */
 export const BLAKE256_BLOCK_LENGTH = 64;
 
-function rotr(x: number, n: number): number {
-  return (x >>> n) | (x << (32 - n));
-}
-
 // Scratch buffers reused across the whole module (single-threaded JS).
 const V = new Uint32Array(16);
 const M = new Uint32Array(16);
@@ -87,41 +83,147 @@ function compress(
     V[12] ^= t0; V[13] ^= t0; V[14] ^= t1; V[15] ^= t1;
   }
 
+  // The G mixing function, inlined across all eight columns.
+  //
+  // This was a `g(a, b, c, d, sBase, e)` helper, which reads far better. It is
+  // written out because the call overhead dominates: G runs 8 times per round and
+  // 14 rounds per 64-byte block, so 112 calls per block with six arguments each.
+  // Inlining it measured 2.09x end-to-end throughput on this machine (97 -> 204
+  // MiB/s over 8 MiB) with a byte-identical digest, and BLAKE-256 backs every
+  // txid, signature hash, address hash and base58 checksum in the library.
+  //
+  // The bodies are mechanically identical; only the V indices and the SIGMA
+  // column offset differ. Verified against dcrd's known-answer vectors at every
+  // padding boundary and differentially against @noble/hashes over lengths 0..300.
+  let p: number, s0: number, s1: number;
+  let va: number, vb: number, vc: number, vd: number, t: number;
   for (let r = 0; r < ROUNDS; r++) {
     const s = (r % 10) * 16;
-    g(0, 4, 8, 12, s, 0);
-    g(1, 5, 9, 13, s, 1);
-    g(2, 6, 10, 14, s, 2);
-    g(3, 7, 11, 15, s, 3);
-    g(0, 5, 10, 15, s, 4);
-    g(1, 6, 11, 12, s, 5);
-    g(2, 7, 8, 13, s, 6);
-    g(3, 4, 9, 14, s, 7);
+
+      // column 0: V[0] V[4] V[8] V[12]
+      p = s + 0;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[0]!; vb = V[4]!; vc = V[8]!; vd = V[12]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[0] = va; V[4] = vb; V[8] = vc; V[12] = vd;
+
+      // column 1: V[1] V[5] V[9] V[13]
+      p = s + 2;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[1]!; vb = V[5]!; vc = V[9]!; vd = V[13]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[1] = va; V[5] = vb; V[9] = vc; V[13] = vd;
+
+      // column 2: V[2] V[6] V[10] V[14]
+      p = s + 4;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[2]!; vb = V[6]!; vc = V[10]!; vd = V[14]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[2] = va; V[6] = vb; V[10] = vc; V[14] = vd;
+
+      // column 3: V[3] V[7] V[11] V[15]
+      p = s + 6;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[3]!; vb = V[7]!; vc = V[11]!; vd = V[15]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[3] = va; V[7] = vb; V[11] = vc; V[15] = vd;
+
+      // column 4: V[0] V[5] V[10] V[15]
+      p = s + 8;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[0]!; vb = V[5]!; vc = V[10]!; vd = V[15]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[0] = va; V[5] = vb; V[10] = vc; V[15] = vd;
+
+      // column 5: V[1] V[6] V[11] V[12]
+      p = s + 10;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[1]!; vb = V[6]!; vc = V[11]!; vd = V[12]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[1] = va; V[6] = vb; V[11] = vc; V[12] = vd;
+
+      // column 6: V[2] V[7] V[8] V[13]
+      p = s + 12;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[2]!; vb = V[7]!; vc = V[8]!; vd = V[13]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[2] = va; V[7] = vb; V[8] = vc; V[13] = vd;
+
+      // column 7: V[3] V[4] V[9] V[14]
+      p = s + 14;
+      s0 = SIGMA[p]!;
+      s1 = SIGMA[p + 1]!;
+      va = V[3]!; vb = V[4]!; vc = V[9]!; vd = V[14]!;
+      va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 16) | (t << 16);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 12) | (t << 20);
+      va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
+      t = vd ^ va; vd = (t >>> 8) | (t << 24);
+      vc = (vc + vd) >>> 0;
+      t = vb ^ vc; vb = (t >>> 7) | (t << 25);
+      V[3] = va; V[4] = vb; V[9] = vc; V[14] = vd;
   }
 
   for (let i = 0; i < 8; i++) {
     h[i] = (h[i]! ^ V[i]! ^ V[i + 8]!) >>> 0;
   }
-}
-
-// The G mixing function. `sBase` is the offset of the active SIGMA row; `e` is
-// the column index (0..7) within the round.
-function g(a: number, b: number, c: number, d: number, sBase: number, e: number): void {
-  const p = sBase + e * 2;
-  const s0 = SIGMA[p]!;
-  const s1 = SIGMA[p + 1]!;
-  let va = V[a]!, vb = V[b]!, vc = V[c]!, vd = V[d]!;
-
-  va = (va + vb + ((M[s0]! ^ C[s1]!) >>> 0)) >>> 0;
-  vd = rotr(vd ^ va, 16);
-  vc = (vc + vd) >>> 0;
-  vb = rotr(vb ^ vc, 12);
-  va = (va + vb + ((M[s1]! ^ C[s0]!) >>> 0)) >>> 0;
-  vd = rotr(vd ^ va, 8);
-  vc = (vc + vd) >>> 0;
-  vb = rotr(vb ^ vc, 7);
-
-  V[a] = va; V[b] = vb; V[c] = vc; V[d] = vd;
 }
 
 /** Incremental BLAKE-256 hasher. */
@@ -150,8 +252,7 @@ export class Blake256 {
       i = take;
       if (this.buflen === BLAKE256_BLOCK_LENGTH) {
         this.compressed += BLAKE256_BLOCK_LENGTH;
-        const bits = BigInt(this.compressed) * 8n;
-        compress(this.h, this.buf, 0, lo(bits), hi(bits), false);
+        compress(this.h, this.buf, 0, lo32(this.compressed), hi32(this.compressed), false);
         this.buflen = 0;
       }
     }
@@ -159,8 +260,7 @@ export class Blake256 {
     // Absorb whole blocks straight from the input.
     while (n - i >= BLAKE256_BLOCK_LENGTH) {
       this.compressed += BLAKE256_BLOCK_LENGTH;
-      const bits = BigInt(this.compressed) * 8n;
-      compress(this.h, data, i, lo(bits), hi(bits), false);
+      compress(this.h, data, i, lo32(this.compressed), hi32(this.compressed), false);
       i += BLAKE256_BLOCK_LENGTH;
     }
 
@@ -177,7 +277,6 @@ export class Blake256 {
     this.finished = true;
 
     const rem = this.buflen;
-    const totalBits = BigInt(this.total) * 8n;
     const block = new Uint8Array(BLAKE256_BLOCK_LENGTH);
     block.set(this.buf.subarray(0, rem));
 
@@ -185,17 +284,17 @@ export class Blake256 {
       // Everything fits in one final block.
       block[rem] = 0x80; // padding start ('1' bit)
       block[55]! |= 0x01; // BLAKE-256 domain bit (merges to 0x81 when rem === 55)
-      writeLen(block, totalBits);
+      writeLen(block, this.total);
       // A block with no message bytes carries a zero counter (nullt).
       if (rem === 0) compress(this.h, block, 0, 0, 0, true);
-      else compress(this.h, block, 0, lo(totalBits), hi(totalBits), false);
+      else compress(this.h, block, 0, lo32(this.total), hi32(this.total), false);
     } else {
       // Not enough room for the length: emit a data block then a padding block.
       block[rem] = 0x80;
-      compress(this.h, block, 0, lo(totalBits), hi(totalBits), false);
+      compress(this.h, block, 0, lo32(this.total), hi32(this.total), false);
       const tail = new Uint8Array(BLAKE256_BLOCK_LENGTH);
       tail[55] = 0x01;
-      writeLen(tail, totalBits);
+      writeLen(tail, this.total);
       compress(this.h, tail, 0, 0, 0, true);
     }
 
@@ -211,15 +310,25 @@ export class Blake256 {
   }
 }
 
-function lo(bits: bigint): number {
-  return Number(bits & 0xffffffffn);
+/**
+ * The BLAKE counter is a 64-bit *bit* count, split into two 32-bit halves.
+ *
+ * These take a **byte** count and derive the halves with plain number
+ * arithmetic. The previous version built a BigInt per 64-byte block, which cost
+ * roughly 11% of throughput on long inputs for no benefit: a byte count stays
+ * exact in a double up to 2^53, so `bytes * 8` is exact up to 2^50 bytes — a
+ * pebibyte, far past any message this will see. `>>> 0` is ToUint32, i.e. modulo
+ * 2^32 of an exact integer, so the low half is exact too.
+ */
+function lo32(bytes: number): number {
+  return (bytes * 8) >>> 0;
 }
-function hi(bits: bigint): number {
-  return Number((bits >> 32n) & 0xffffffffn);
+function hi32(bytes: number): number {
+  return Math.floor((bytes * 8) / 0x100000000) >>> 0;
 }
-function writeLen(block: Uint8Array, totalBits: bigint): void {
-  const h = hi(totalBits);
-  const l = lo(totalBits);
+function writeLen(block: Uint8Array, totalBytes: number): void {
+  const h = hi32(totalBytes);
+  const l = lo32(totalBytes);
   block[56] = (h >>> 24) & 0xff;
   block[57] = (h >>> 16) & 0xff;
   block[58] = (h >>> 8) & 0xff;

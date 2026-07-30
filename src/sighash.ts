@@ -53,15 +53,38 @@ export function assertSignableSigHashType(hashType: number): void {
 }
 
 /**
+ * The reusable prefix hash for `SigHashAll` without `AnyOneCanPay`.
+ *
+ * Under that hash type the prefix half of the signature hash does not depend on
+ * which input is being signed, and its serialization is byte-identical to the
+ * transaction's own prefix serialization — `SigHashSerializePrefix` and
+ * `TxSerializeNoWitness` are both `1`, and the bodies are the same. So this is
+ * exactly `tx.hash()`, and passing it to {@link calcSignatureHash} as
+ * `cachedPrefix` turns signing an N-input transaction from O(N²) into O(N).
+ *
+ * This is what dcrd's `cachedPrefix` parameter exists for.
+ */
+export function sigHashPrefixAll(tx: Transaction): Uint8Array {
+  return tx.hash();
+}
+
+/**
  * Compute the signature hash for input `idx` of `tx` under `hashType`, with
  * `subScript` as the script being satisfied (the prevout pkScript for P2PKH, or
  * the redeem script for P2SH). Returns the 32-byte hash to be signed.
+ *
+ * `cachedPrefix` is an optional pre-computed prefix hash from
+ * {@link sigHashPrefixAll}, honoured only for `SigHashAll` without
+ * `AnyOneCanPay` — the one case where the prefix half is input-independent. It is
+ * ignored for every other hash type rather than trusted, so passing it
+ * unconditionally is safe.
  */
 export function calcSignatureHash(
   subScript: Uint8Array,
   hashType: SigHashType | number,
   tx: Transaction,
   idx: number,
+  cachedPrefix?: Uint8Array,
 ): Uint8Array {
   // dcrd's SigHashType is a byte, and the final preimage commits to it as a
   // little-endian uint32 while a signature script carries only the low byte. A
@@ -102,38 +125,51 @@ export function calcSignatureHash(
   const signInIdx = anyoneCanPay ? 0 : idx;
 
   // ---- Prefix hash ----
-  const pw = new Writer();
-  pw.u32(((tx.version & 0xffff) | (SIG_HASH_SERIALIZE_PREFIX << 16)) >>> 0);
-
-  pw.varInt(inputs.length);
-  for (let i = 0; i < inputs.length; i++) {
-    const input = inputs[i]!;
-    const op = input.previousOutPoint;
-    pw.bytes(op.hash).u32(op.index).u8(op.tree);
-    let sequence = input.sequence;
-    if ((masked === SigHashType.None || masked === SigHashType.Single) && i !== signInIdx) {
-      sequence = 0;
+  // For SigHashAll without AnyOneCanPay the prefix half does not depend on which
+  // input is being signed, so a caller signing N inputs can compute it once. Every
+  // other hash type changes what the prefix commits to — cleared outputs, zeroed
+  // sequences, or a single input — so the cache is ignored rather than trusted.
+  const prefixIsInputIndependent = masked === SigHashType.All && !anyoneCanPay;
+  let prefixHash: Uint8Array;
+  if (cachedPrefix !== undefined && prefixIsInputIndependent) {
+    if (cachedPrefix.length !== 32) {
+      throw new Error(`sighash: cachedPrefix must be 32 bytes, got ${cachedPrefix.length}`);
     }
-    pw.u32(sequence);
-  }
+    prefixHash = cachedPrefix;
+  } else {
+    const pw = new Writer();
+    pw.u32(((tx.version & 0xffff) | (SIG_HASH_SERIALIZE_PREFIX << 16)) >>> 0);
 
-  // Outputs committed to depend on the hash type.
-  let outputs = tx.outputs;
-  if (masked === SigHashType.None) outputs = [];
-  else if (masked === SigHashType.Single) outputs = tx.outputs.slice(0, idx + 1);
-
-  pw.varInt(outputs.length);
-  for (let i = 0; i < outputs.length; i++) {
-    const out = outputs[i]!;
-    if (masked === SigHashType.Single && i !== idx) {
-      // Cleared output: amount -1, empty script.
-      pw.i64(-1n).u16(out.version).varInt(0);
-    } else {
-      pw.i64(out.value).u16(out.version).varBytes(out.pkScript);
+    pw.varInt(inputs.length);
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i]!;
+      const op = input.previousOutPoint;
+      pw.bytes(op.hash).u32(op.index).u8(op.tree);
+      let sequence = input.sequence;
+      if ((masked === SigHashType.None || masked === SigHashType.Single) && i !== signInIdx) {
+        sequence = 0;
+      }
+      pw.u32(sequence);
     }
+
+    // Outputs committed to depend on the hash type.
+    let outputs = tx.outputs;
+    if (masked === SigHashType.None) outputs = [];
+    else if (masked === SigHashType.Single) outputs = tx.outputs.slice(0, idx + 1);
+
+    pw.varInt(outputs.length);
+    for (let i = 0; i < outputs.length; i++) {
+      const out = outputs[i]!;
+      if (masked === SigHashType.Single && i !== idx) {
+        // Cleared output: amount -1, empty script.
+        pw.i64(-1n).u16(out.version).varInt(0);
+      } else {
+        pw.i64(out.value).u16(out.version).varBytes(out.pkScript);
+      }
+    }
+    pw.u32(tx.lockTime).u32(tx.expiry);
+    prefixHash = blake256(pw.finish());
   }
-  pw.u32(tx.lockTime).u32(tx.expiry);
-  const prefixHash = blake256(pw.finish());
 
   // ---- Witness hash ----
   const ww = new Writer();

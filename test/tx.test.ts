@@ -9,8 +9,14 @@ import {
   TxTree,
 } from "../src/tx.js";
 import { Reader } from "../src/bytes.js";
-import { calcSignatureHash, SigHashType } from "../src/sighash.js";
-import { rawTxInSignature, signatureScript, signP2PKHInput, verifyHash } from "../src/sign.js";
+import { calcSignatureHash, sigHashPrefixAll, SigHashType } from "../src/sighash.js";
+import {
+  rawTxInSignature,
+  signatureScript,
+  signP2PKHInput,
+  signP2PKHInputs,
+  verifyHash,
+} from "../src/sign.js";
 import { payToPubKeyHashScript } from "../src/script.js";
 import { publicKeyFromPrivate } from "../src/keys.js";
 import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
@@ -268,6 +274,88 @@ describe("signature hash edge cases", () => {
     const before = bytesToHex(calcSignatureHash(subScript, SigHashType.All, tx, 1));
     tx.inputs[0]!.signatureScript = hexToBytes("deadbeef".repeat(20));
     expect(bytesToHex(calcSignatureHash(subScript, SigHashType.All, tx, 1))).toBe(before);
+  });
+});
+
+describe("cached prefix hash (the O(N^2) -> O(N) signing path)", () => {
+  // One output per input, so SigHashSingle is valid at every index.
+  function nInOut(n: number): Transaction {
+    const outScript = payToPubKeyHashScript(hexToBytes(vectors.keys.pubkeyHash160));
+    const tx = new Transaction();
+    tx.version = 1;
+    for (let i = 0; i < n; i++) {
+      tx.addInput(
+        { hash: new Uint8Array(32).fill(i & 0xff), index: i, tree: TxTree.Regular },
+        { valueIn: BigInt(1000 + i), blockHeight: i, blockIndex: i },
+      );
+      tx.addOutput(BigInt(500 + i), outScript, 0);
+    }
+    tx.lockTime = 11;
+    tx.expiry = 22;
+    return tx;
+  }
+  const outScript = payToPubKeyHashScript(hexToBytes(vectors.keys.pubkeyHash160));
+
+  test("sigHashPrefixAll is exactly the transaction prefix hash", () => {
+    // SigHashSerializePrefix and TxSerializeNoWitness are both 1 and the bodies
+    // are identical, which is the whole reason the prefix half is reusable.
+    const tx = nInOut(4);
+    expect(bytesToHex(sigHashPrefixAll(tx))).toBe(bytesToHex(tx.hash()));
+  });
+
+  test("a cached prefix gives byte-identical hashes for every type and index", () => {
+    const tx = nInOut(5);
+    const cached = sigHashPrefixAll(tx);
+    for (const ht of [0x01, 0x02, 0x03, 0x81, 0x82, 0x83]) {
+      for (let i = 0; i < 5; i++) {
+        expect(
+          bytesToHex(calcSignatureHash(outScript, ht, tx, i, cached)),
+          `0x${ht.toString(16)} in${i}`,
+        ).toBe(bytesToHex(calcSignatureHash(outScript, ht, tx, i)));
+      }
+    }
+  });
+
+  test("the cache is ignored, not trusted, wherever it does not apply", () => {
+    // Only SigHashAll without AnyOneCanPay has an input-independent prefix. For
+    // everything else a wrong cache must have no effect at all.
+    const tx = nInOut(3);
+    const bogus = new Uint8Array(32).fill(0xee);
+    for (const ht of [0x02, 0x03, 0x81, 0x82, 0x83]) {
+      expect(
+        bytesToHex(calcSignatureHash(outScript, ht, tx, 0, bogus)),
+        `0x${ht.toString(16)}`,
+      ).toBe(bytesToHex(calcSignatureHash(outScript, ht, tx, 0)));
+    }
+    // ...and for SigHashAll it *is* used, so a wrong one changes the result.
+    expect(bytesToHex(calcSignatureHash(outScript, 0x01, tx, 0, bogus))).not.toBe(
+      bytesToHex(calcSignatureHash(outScript, 0x01, tx, 0)),
+    );
+    expect(() => calcSignatureHash(outScript, 0x01, tx, 0, new Uint8Array(31))).toThrow(
+      /must be 32 bytes/,
+    );
+  });
+
+  test("signP2PKHInputs is byte-identical to signing one at a time", () => {
+    const priv = hexToBytes(vectors.keys.privHex);
+    for (const n of [1, 2, 8]) {
+      const oneByOne = nInOut(n);
+      const batched = nInOut(n);
+      for (let i = 0; i < n; i++) signP2PKHInput(oneByOne, i, outScript, priv);
+      signP2PKHInputs(
+        batched,
+        Array.from({ length: n }, (_, i) => ({ idx: i, subScript: outScript, privateKey: priv })),
+      );
+      expect(bytesToHex(batched.serialize()), `n=${n}`).toBe(bytesToHex(oneByOne.serialize()));
+      expect(batched.fullTxid(), `n=${n} fullTxid`).toBe(oneByOne.fullTxid());
+    }
+  });
+
+  test("signP2PKHInputs still rejects a hash type dcrd would not accept", () => {
+    const priv = hexToBytes(vectors.keys.privHex);
+    expect(() =>
+      signP2PKHInputs(nInOut(2), [{ idx: 0, subScript: outScript, privateKey: priv }], 0x04),
+    ).toThrow(/not one dcrd accepts/);
   });
 });
 

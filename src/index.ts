@@ -129,6 +129,7 @@ export {
 // Signature hash + signing
 export {
   calcSignatureHash,
+  sigHashPrefixAll,
   SigHashType,
   isSignableSigHashType,
   assertSignableSigHashType,
@@ -139,6 +140,8 @@ export {
   rawTxInSignature,
   signatureScript,
   signP2PKHInput,
+  signP2PKHInputs,
+  type P2PKHInputToSign,
 } from "./sign.js";
 
 // Amounts

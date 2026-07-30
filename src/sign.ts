@@ -8,7 +8,12 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { publicKeyFromPrivate } from "./keys.js";
 import { pushData } from "./script.js";
-import { assertSignableSigHashType, calcSignatureHash, SigHashType } from "./sighash.js";
+import {
+  assertSignableSigHashType,
+  calcSignatureHash,
+  sigHashPrefixAll,
+  SigHashType,
+} from "./sighash.js";
 import type { Transaction } from "./tx.js";
 
 /** DER-encode a deterministic low-S ECDSA signature over a 32-byte hash. */
@@ -100,6 +105,9 @@ export function signatureScript(
 /**
  * Sign input `idx` in place: compute and assign its P2PKH signature script.
  * Returns the signed transaction for chaining.
+ *
+ * For a transaction with several inputs prefer {@link signP2PKHInputs}, which is
+ * O(N) rather than O(N²).
  */
 export function signP2PKHInput(
   tx: Transaction,
@@ -117,5 +125,54 @@ export function signP2PKHInput(
     privateKey,
     compressed,
   );
+  return tx;
+}
+
+/** One input to sign, for {@link signP2PKHInputs}. */
+export interface P2PKHInputToSign {
+  /** Index into `tx.inputs`. */
+  idx: number;
+  /** The script being satisfied — the prevout pkScript for P2PKH. */
+  subScript: Uint8Array;
+  privateKey: Uint8Array;
+  /** Serialize the public key compressed (the default). */
+  compressed?: boolean;
+}
+
+/**
+ * Sign several P2PKH inputs in place, reusing one prefix hash.
+ *
+ * `calcSignatureHash` re-serializes and re-hashes the whole transaction prefix on
+ * every call, so signing N inputs one at a time is O(N²) — the dominant cost for
+ * a transaction with many inputs. Under `SigHashAll` without `AnyOneCanPay` the
+ * prefix half is input-independent, so it is computed once here and reused, which
+ * is what dcrd's `cachedPrefix` parameter is for.
+ *
+ * The prefix hash is taken **before** any signature script is assigned, which is
+ * also why this is correct: the prefix commits to no witness data, so writing
+ * signature scripts cannot invalidate it. For other hash types the cache is
+ * ignored and each input is hashed independently, so passing one is always safe.
+ */
+export function signP2PKHInputs(
+  tx: Transaction,
+  toSign: readonly P2PKHInputToSign[],
+  hashType: SigHashType | number = SigHashType.All,
+): Transaction {
+  assertSignableSigHashType(hashType);
+  const cachedPrefix = sigHashPrefixAll(tx);
+  for (const { idx, subScript, privateKey, compressed = true } of toSign) {
+    const hash = calcSignatureHash(subScript, hashType, tx, idx, cachedPrefix);
+    const der = signHash(hash, privateKey);
+    const rawSig = new Uint8Array(der.length + 1);
+    rawSig.set(der);
+    rawSig[der.length] = hashType & 0xff;
+    const pubKey = publicKeyFromPrivate(privateKey, compressed);
+    const a = pushData(rawSig);
+    const b = pushData(pubKey);
+    const script = new Uint8Array(a.length + b.length);
+    script.set(a);
+    script.set(b, a.length);
+    tx.inputs[idx]!.signatureScript = script;
+  }
   return tx;
 }

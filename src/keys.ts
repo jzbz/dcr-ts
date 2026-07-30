@@ -86,19 +86,52 @@ export function privateKeyTweakAdd(kPar: Uint8Array, il: Uint8Array): Uint8Array
 }
 
 /**
- * BIP32 public child tweak: `point(IL) + KPar`, returned as a compressed key.
- * Returns `null` when invalid (IL >= n, or the result is the point at infinity).
+ * A parsed secp256k1 point, for reuse across derivations.
+ *
+ * Deliberately *not* re-exported from the package root: it is `@noble`'s type, and
+ * pinning the public API to a dependency's internals is not worth the 1.4x.
  */
-export function publicKeyTweakAdd(kPar: Uint8Array, il: Uint8Array): Uint8Array | null {
+export type PublicKeyPoint = InstanceType<typeof secp256k1.ProjectivePoint>;
+
+/**
+ * Decompress a serialized public key once, so a caller deriving a chain of
+ * children can reuse it.
+ *
+ * Decompressing costs a modular square root — measured ~65 us, about 29% of a
+ * public (watch-only) derivation step, and it is the same parent key every time
+ * when scanning addresses under one account.
+ */
+export function parsePublicKeyPoint(key: Uint8Array): PublicKeyPoint | null {
+  try {
+    return secp256k1.ProjectivePoint.fromHex(key);
+  } catch {
+    return null;
+  }
+}
+
+/** {@link publicKeyTweakAdd} with the parent already decompressed. */
+export function publicKeyTweakAddPoint(
+  parent: PublicKeyPoint,
+  il: Uint8Array,
+): Uint8Array | null {
   const ilInt = bytesToBigInt(il);
   if (ilInt >= CURVE_ORDER || ilInt === 0n) return null;
   const P = secp256k1.ProjectivePoint;
   try {
-    const parent = P.fromHex(kPar);
     const child = P.BASE.multiply(ilInt).add(parent);
     if (child.equals(P.ZERO)) return null;
     return child.toRawBytes(true);
   } catch {
     return null;
   }
+}
+
+/**
+ * BIP32 public child tweak: `point(IL) + KPar`, returned as a compressed key.
+ * Returns `null` when invalid (IL >= n, or the result is the point at infinity).
+ */
+export function publicKeyTweakAdd(kPar: Uint8Array, il: Uint8Array): Uint8Array | null {
+  const parent = parsePublicKeyPoint(kPar);
+  if (parent === null) return null;
+  return publicKeyTweakAddPoint(parent, il);
 }
