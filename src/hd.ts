@@ -50,7 +50,7 @@
  */
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
-import { base58Decode, checkDecode, checkEncode } from "./base58.js";
+import { base58Decode, checkDecode, checkEncode, maxBase58Length } from "./base58.js";
 import { copyOf } from "./bytes.js";
 import { hash160 } from "./hash.js";
 import {
@@ -69,6 +69,12 @@ export const HARDENED_OFFSET = 0x80000000;
 
 const MASTER_HMAC_KEY = new TextEncoder().encode("Bitcoin seed");
 const SERIALIZED_LENGTH = 78;
+
+/**
+ * Longest a `dprv`/`dpub` string can be: the 78-byte serialization plus a 4-byte
+ * checksum. Matches dcrd's `maxKeyLen` in `NewKeyFromString`.
+ */
+export const MAX_EXTENDED_KEY_LENGTH = maxBase58Length(SERIALIZED_LENGTH + 4);
 
 /**
  * Mark a BIP44 child index as hardened.
@@ -350,6 +356,14 @@ export class ExtendedKey {
 
   /** Parse an extended key string, validating the checksum and version. */
   static fromString(str: string): ExtendedKey {
+    // Bound before decoding; base58 decoding is quadratic, so an unbounded string
+    // burns CPU proportional to its length squared. dcrd caps identically
+    // (hdkeychain.NewKeyFromString's maxKeyLen).
+    if (str.length > MAX_EXTENDED_KEY_LENGTH) {
+      throw new Error(
+        `hd: ${str.length} characters exceeds the ${MAX_EXTENDED_KEY_LENGTH}-character maximum`,
+      );
+    }
     const data = checkDecode(str);
     return ExtendedKey.fromSerialized(data);
   }

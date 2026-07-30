@@ -13,7 +13,7 @@
  * - pay-to-pubkey-hash (Ed25519 and secp256k1 Schnorr) — recognised on decode
  * - pay-to-pubkey (secp256k1 ECDSA) — the `Dk…` full-pubkey address
  */
-import { base58Decode, checkDecode, checkEncode } from "./base58.js";
+import { base58Decode, checkDecode, checkEncode, maxBase58Length } from "./base58.js";
 import { hash160 } from "./hash.js";
 import type { Network } from "./networks.js";
 import { networks } from "./networks.js";
@@ -48,6 +48,13 @@ interface PrefixEntry {
   kind: AddressKind;
   prefix: readonly [number, number];
 }
+
+/**
+ * Longest a version-0 address can be: a 33-byte payload (the pay-to-pubkey kind)
+ * plus a 2-byte version prefix and a 4-byte checksum. Matches dcrd's
+ * `maxV0AddrLen`.
+ */
+export const MAX_ADDRESS_LENGTH = maxBase58Length(33 + 2 + 4);
 
 // Every (network, kind) → 2-byte prefix, used to classify on decode.
 const PREFIXES: PrefixEntry[] = [];
@@ -154,6 +161,16 @@ export function addressFromScript(redeemScript: Uint8Array, network: Network): s
  * belong to it; otherwise the network is inferred from the version prefix.
  */
 export function decodeAddress(address: string, network?: Network): DecodedAddress {
+  // Bound the input before decoding. base58 decoding is quadratic, so without
+  // this a long string is a cheap way to stall the event loop — and every length
+  // check below happens after the decode. dcrd caps identically
+  // (stdaddr.DecodeAddressV0's maxV0AddrLen): the largest version-0 address holds
+  // a 33-byte payload plus a 2-byte prefix and a 4-byte checksum.
+  if (address.length > MAX_ADDRESS_LENGTH) {
+    throw new Error(
+      `decodeAddress: ${address.length} characters exceeds the ${MAX_ADDRESS_LENGTH}-character maximum`,
+    );
+  }
   const data = checkDecode(address); // throws on bad checksum
   if (data.length < 3) throw new Error("decodeAddress: too short");
   const prefix: [number, number] = [data[0]!, data[1]!];
@@ -196,8 +213,19 @@ export function isValidAddress(address: string, network?: Network): boolean {
   }
 }
 
-/** Build the pkScript that pays to `address`. */
-export function addressToScript(address: string, network?: Network): Uint8Array {
+/**
+ * Build the pkScript that pays to `address`.
+ *
+ * `network` is **required**, and deliberately so. A payment script commits only
+ * to the 20-byte hash, not to the network, so `addressToScript` on a testnet
+ * address produces bytes byte-identical to the mainnet address for the same hash
+ * — a pasted testnet address would quietly pay whoever controls that hash on
+ * mainnet. Naming the expected network here is the only thing that catches it.
+ *
+ * Use {@link decodeAddress} without a network when you genuinely want to inspect
+ * an address of unknown origin; it returns the network it found.
+ */
+export function addressToScript(address: string, network: Network): Uint8Array {
   const d = decodeAddress(address, network);
   switch (d.kind) {
     case "pubkeyhash-ecdsa":

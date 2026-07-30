@@ -36,7 +36,28 @@ export function base58Encode(bytes: Uint8Array): string {
   return "1".repeat(zeros) + out;
 }
 
-/** Decode a base58 string to raw bytes. Throws on invalid characters. */
+/**
+ * Longest base58 string that can decode to `decodedLen` bytes.
+ *
+ * base58 expands by at most log_58(256) ≈ 1.37 bytes of output per input byte,
+ * which is how dcrd derives its own bounds (`stdaddr.DecodeAddressV0`'s
+ * `maxV0AddrLen`, `hdkeychain.NewKeyFromString`'s `maxKeyLen`). Callers must cap
+ * untrusted input *before* decoding: {@link base58Decode} accumulates one BigInt
+ * digit at a time and is therefore quadratic, so an unbounded string is a cheap
+ * way to stall the event loop.
+ */
+export function maxBase58Length(decodedLen: number): number {
+  return Math.floor((decodedLen * 137) / 100) + 1;
+}
+
+/**
+ * Decode a base58 string to raw bytes. Throws on invalid characters.
+ *
+ * Cost is **quadratic** in the length of `str`. There is deliberately no length
+ * cap here, because the function is general-purpose; every decoder in this
+ * library bounds its input first via {@link maxBase58Length}, and anything
+ * calling this directly on untrusted input must do the same.
+ */
 export function base58Decode(str: string): Uint8Array {
   let zeros = 0;
   while (zeros < str.length && str[zeros] === "1") zeros++;

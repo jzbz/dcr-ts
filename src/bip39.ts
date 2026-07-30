@@ -41,11 +41,23 @@ export function mnemonicToSeed(mnemonic: string, passphrase = ""): Uint8Array {
   return mnemonicToSeedSync(mnemonic, passphrase);
 }
 
-/** Expand a mnemonic straight into a Decred master {@link ExtendedKey}. */
+/**
+ * Expand a mnemonic straight into a Decred master {@link ExtendedKey}.
+ *
+ * The mnemonic's checksum is verified first. BIP39 seed derivation is defined for
+ * *any* string, so a typo'd or mis-transcribed phrase would otherwise expand
+ * happily into a different, valid-looking wallet — one of the classic ways to
+ * lose funds while every operation appears to succeed. Use
+ * {@link mnemonicToSeed} directly if you specifically want the unchecked
+ * primitive.
+ */
 export function mnemonicToMasterKey(
   mnemonic: string,
   network: Network,
   passphrase = "",
 ): ExtendedKey {
+  if (!validateMnemonic(mnemonic)) {
+    throw new Error("bip39: invalid mnemonic (bad checksum or word not in the wordlist)");
+  }
   return ExtendedKey.fromSeed(mnemonicToSeed(mnemonic, passphrase), network);
 }

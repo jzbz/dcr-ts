@@ -85,6 +85,43 @@ export function pushData(data: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * True when `script` tokenizes cleanly as a version-0 script — i.e. every data
+ * push declares a length that actually fits.
+ *
+ * The equivalent of dcrd's `checkScriptParses`, which its exported
+ * `CalcSignatureHash` runs before hashing. Signing against a script that does
+ * not parse produces a signature over a message dcrd would refuse to compute,
+ * so the resulting transaction can never be spent.
+ *
+ * This is a structural check only, not an execution one: it says nothing about
+ * whether the opcodes are valid or the script would succeed.
+ */
+export function scriptParses(script: Uint8Array): boolean {
+  let i = 0;
+  while (i < script.length) {
+    const op = script[i]!;
+    if (op >= 0x01 && op <= 0x4b) {
+      // OP_DATA_1..OP_DATA_75: the opcode byte plus exactly that many more.
+      if (script.length - i < op + 1) return false;
+      i += op + 1;
+    } else if (op === OP.PUSHDATA1 || op === OP.PUSHDATA2 || op === OP.PUSHDATA4) {
+      const lenSize = op === OP.PUSHDATA1 ? 1 : op === OP.PUSHDATA2 ? 2 : 4;
+      if (script.length - (i + 1) < lenSize) return false;
+      let dataLen = 0;
+      for (let b = 0; b < lenSize; b++) dataLen |= script[i + 1 + b]! << (8 * b);
+      // dcrd reads the length as a signed int32, so a 4-byte length with the
+      // high bit set comes out negative and is rejected rather than treated as
+      // enormous. JS `<<` yields int32, so this matches for free.
+      if (dataLen < 0 || dataLen > script.length - (i + 1 + lenSize)) return false;
+      i += 1 + lenSize + dataLen;
+    } else {
+      i += 1;
+    }
+  }
+  return true;
+}
+
 /** Build a P2PKH script: `OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG`. */
 export function payToPubKeyHashScript(hash160: Uint8Array): Uint8Array {
   if (hash160.length !== 20) throw new Error("payToPubKeyHash: hash must be 20 bytes");

@@ -32,7 +32,7 @@ describe("end-to-end wallet flow", () => {
     expect(spendKey.address()).toBe(spendAddr);
 
     // Build a transaction spending a fake previous output locked to spendAddr.
-    const prevScript = addressToScript(spendAddr);
+    const prevScript = addressToScript(spendAddr, networks.mainnet);
     const tx = new Transaction();
     tx.addInput(
       outPointFromTxid(
@@ -41,7 +41,7 @@ describe("end-to-end wallet flow", () => {
       ),
       { valueIn: 200_000_000n, blockHeight: 100, blockIndex: 0 },
     );
-    tx.addOutput(150_000_000n, addressToScript(addressFromPubKey(changeKey.publicKey(), networks.mainnet)));
+    tx.addOutput(150_000_000n, addressToScript(addressFromPubKey(changeKey.publicKey(), networks.mainnet), networks.mainnet));
     tx.addOutput(49_990_000n, prevScript);
 
     // Sign input 0.

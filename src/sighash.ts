@@ -12,6 +12,7 @@
  */
 import { blake256 } from "./hash.js";
 import { Writer } from "./bytes.js";
+import { scriptParses } from "./script.js";
 import type { Transaction } from "./tx.js";
 
 export enum SigHashType {
@@ -26,6 +27,32 @@ const SIG_HASH_SERIALIZE_PREFIX = 1;
 const SIG_HASH_SERIALIZE_WITNESS = 3;
 
 /**
+ * True when `hashType` is one dcrd's script engine will accept, i.e. the six
+ * values `CheckHashTypeEncoding` permits: All/None/Single, each optionally
+ * OR'ed with AnyOneCanPay.
+ *
+ * Note {@link calcSignatureHash} deliberately still computes a hash for other
+ * byte values, because dcrd's `calcSignatureHash` does — undefined types hash as
+ * if they were All. Validation belongs at the point a signature is *produced*,
+ * which is where {@link assertSignableSigHashType} is applied.
+ */
+export function isSignableSigHashType(hashType: number): boolean {
+  if (!Number.isInteger(hashType) || hashType < 0 || hashType > 0xff) return false;
+  const masked = hashType & 0x7f; // dcrd: hashType & ^SigHashAnyOneCanPay
+  return masked >= SigHashType.All && masked <= SigHashType.Single;
+}
+
+/** Throw unless `hashType` is one dcrd's engine accepts. */
+export function assertSignableSigHashType(hashType: number): void {
+  if (!isSignableSigHashType(hashType)) {
+    throw new Error(
+      `sighash: hash type 0x${Number(hashType).toString(16)} is not one dcrd accepts ` +
+        `(All/None/Single, optionally |AnyOneCanPay)`,
+    );
+  }
+}
+
+/**
  * Compute the signature hash for input `idx` of `tx` under `hashType`, with
  * `subScript` as the script being satisfied (the prevout pkScript for P2PKH, or
  * the redeem script for P2SH). Returns the 32-byte hash to be signed.
@@ -36,8 +63,30 @@ export function calcSignatureHash(
   tx: Transaction,
   idx: number,
 ): Uint8Array {
+  // dcrd's SigHashType is a byte, and the final preimage commits to it as a
+  // little-endian uint32 while a signature script carries only the low byte. A
+  // value above 0xff would therefore be committed to in full but transmitted
+  // truncated, so a verifier would recompute a different hash and the signature
+  // could never verify. Reject rather than silently produce that.
+  if (!Number.isInteger(hashType) || hashType < 0 || hashType > 0xff) {
+    throw new Error(`sighash: hash type must be a byte (0..255), got ${hashType}`);
+  }
+  // NaN and fractional indices slip past both comparisons below (every relational
+  // test against NaN is false), leaving a hash that commits the subScript to no
+  // input at all.
+  if (!Number.isInteger(idx)) {
+    throw new Error(`sighash: input index must be an integer, got ${idx}`);
+  }
+
   const masked = hashType & SIG_HASH_MASK;
   const anyoneCanPay = (hashType & SigHashType.AnyOneCanPay) !== 0;
+
+  // dcrd's exported CalcSignatureHash gates on checkScriptParses before hashing;
+  // signing against a script that does not tokenize yields a signature over a
+  // message dcrd would refuse to compute, i.e. an unspendable input.
+  if (!scriptParses(subScript)) {
+    throw new Error("sighash: subScript is not a well-formed script (malformed data push)");
+  }
 
   if (masked === SigHashType.Single && idx >= tx.outputs.length) {
     throw new Error(

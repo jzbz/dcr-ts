@@ -25,6 +25,7 @@ export {
   base58Decode,
   checkEncode,
   checkDecode,
+  maxBase58Length,
 } from "./base58.js";
 export { copyOf, Reader, Writer } from "./bytes.js";
 
@@ -62,6 +63,7 @@ export {
   decodeAddress,
   isValidAddress,
   addressToScript,
+  MAX_ADDRESS_LENGTH,
 } from "./address.js";
 
 // WIF
@@ -70,6 +72,7 @@ export {
   type DecodedWif,
   encodeWif,
   decodeWif,
+  MAX_WIF_LENGTH,
 } from "./wif.js";
 
 // Scripts
@@ -85,6 +88,7 @@ export {
   isPayToScriptHash,
   extractHash160,
   classifyScript,
+  scriptParses,
   type ScriptKind,
 } from "./script.js";
 
@@ -92,6 +96,7 @@ export {
 export {
   ExtendedKey,
   HARDENED_OFFSET,
+  MAX_EXTENDED_KEY_LENGTH,
   hardened,
 } from "./hd.js";
 
@@ -122,7 +127,12 @@ export {
 } from "./tx.js";
 
 // Signature hash + signing
-export { calcSignatureHash, SigHashType } from "./sighash.js";
+export {
+  calcSignatureHash,
+  SigHashType,
+  isSignableSigHashType,
+  assertSignableSigHashType,
+} from "./sighash.js";
 export {
   signHash,
   verifyHash,

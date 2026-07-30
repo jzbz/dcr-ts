@@ -202,6 +202,75 @@ describe("signature hash", () => {
   });
 });
 
+// A 3-in/3-out transaction, so SigHashSingle can be taken at the LAST output
+// index — tx2 has only 2 inputs and cannot reach idx 2 of 3 outputs.
+function buildFixtureTx3(): { tx: Transaction; subScript: Uint8Array } {
+  const outScript = payToPubKeyHashScript(hexToBytes(vectors.keys.pubkeyHash160));
+  const tx = new Transaction();
+  tx.version = 1;
+  for (let i = 0; i < 3; i++) {
+    const display = (0xa0 + i).toString(16).padStart(64, "0");
+    tx.addInput(
+      { hash: hexToBytes(display).reverse(), index: i, tree: TxTree.Regular },
+      {
+        sequence: 0xfffffff0 + i,
+        valueIn: BigInt(100000000 * (i + 1)),
+        blockHeight: 300 + i,
+        blockIndex: i,
+      },
+    );
+    tx.addOutput(BigInt(10000000 * (i + 1)), outScript, 0);
+  }
+  tx.lockTime = 12345;
+  tx.expiry = 23456;
+  return { tx, subScript: outScript };
+}
+
+describe("signature hash edge cases", () => {
+  test("every hash type at every input index matches dcrd, including undefined ones", () => {
+    // Covers SigHashSingle at the last output index (idx 2 of 3), and the hash
+    // types dcrd's calcSignatureHash still defines even though its script engine
+    // rejects them at verification: 0x00, 0x04, 0x05, 0x1f, 0x84, 0xff.
+    const { tx, subScript } = buildFixtureTx3();
+    expect(bytesToHex(tx.serialize())).toBe(vectors.tx3.serialized);
+    expect(tx.txid()).toBe(vectors.tx3.txid);
+    expect(bytesToHex(subScript)).toBe(vectors.tx3.subScript);
+
+    const byType = Object.entries(vectors.tx3.sighashes);
+    expect(byType.length).toBe(12);
+    for (const [htHex, perInput] of byType) {
+      const ht = Number.parseInt(htHex, 16);
+      for (const [inKey, expected] of Object.entries(perInput)) {
+        const idx = Number.parseInt(inKey.slice(2), 10);
+        expect(bytesToHex(calcSignatureHash(subScript, ht, tx, idx)), `${htHex} ${inKey}`).toBe(
+          expected,
+        );
+      }
+    }
+  });
+
+  test("SigHashSingle past the last output is refused", () => {
+    const { tx, subScript } = buildFixtureTx3();
+    // idx 2 is the last valid output, so it must work...
+    expect(() => calcSignatureHash(subScript, SigHashType.Single, tx, 2)).not.toThrow();
+    // ...and a 4th input with only 3 outputs must not.
+    tx.addInput({ hash: new Uint8Array(32).fill(9), index: 0, tree: TxTree.Regular });
+    expect(() => calcSignatureHash(subScript, SigHashType.Single, tx, 3)).toThrow(
+      /no corresponding output/,
+    );
+  });
+
+  test("an existing signature script on another input does not leak into the sighash", () => {
+    // The witness hash commits to the subScript for the signed input and nil for
+    // the rest, so signing input 1 after input 0 already carries a signature must
+    // produce the same hash as signing it first. Nothing proved this before.
+    const { tx, subScript } = buildFixtureTx3();
+    const before = bytesToHex(calcSignatureHash(subScript, SigHashType.All, tx, 1));
+    tx.inputs[0]!.signatureScript = hexToBytes("deadbeef".repeat(20));
+    expect(bytesToHex(calcSignatureHash(subScript, SigHashType.All, tx, 1))).toBe(before);
+  });
+});
+
 describe("signing", () => {
   const priv = hexToBytes(vectors.keys.privHex);
 

@@ -88,19 +88,28 @@ import {
   addressToScript,
   signP2PKHInput,
   decodeWif,
+  mainnet,
 } from "dcr-ts";
 
 const { privateKey } = decodeWif(wif);
-const prevScript = addressToScript(myAddress);
+// The network is required: a payment script commits only to the 20-byte hash, so
+// without it a pasted testnet address would silently pay whoever controls that
+// hash on mainnet.
+const prevScript = addressToScript(myAddress, mainnet);
 
 const tx = new Transaction();
 tx.addInput(outPointFromTxid(prevTxid, vout), { valueIn: 200_000_000n });
-tx.addOutput(199_990_000n, addressToScript(destinationAddress));
+tx.addOutput(199_990_000n, addressToScript(destinationAddress, mainnet));
 
 signP2PKHInput(tx, 0, prevScript, privateKey); // SigHashAll, low-S, RFC 6979
 tx.serialize();  // Uint8Array ready for the wire
 tx.txid();       // reversed-hex display id
 ```
+
+`Transaction` is a mutable builder and does no policy validation: it will not
+check fees, dust, amount bounds or that your inputs cover your outputs. It copies
+the buffers you hand it, so mutating your own scripts afterwards cannot rewrite a
+transaction you have already signed.
 
 ### Amounts
 

@@ -100,8 +100,24 @@ describe("addresses", () => {
 
   test("addressToScript reproduces the dcrd pkScript", () => {
     const a = vectors.keys.addresses.mainnet!;
-    expect(bytesToHex(addressToScript(a.p2pkh))).toBe(a.p2pkh_script);
-    expect(bytesToHex(addressToScript(a.p2sh))).toBe(a.p2sh_script);
+    expect(bytesToHex(addressToScript(a.p2pkh, networks.mainnet))).toBe(a.p2pkh_script);
+    expect(bytesToHex(addressToScript(a.p2sh, networks.mainnet))).toBe(a.p2sh_script);
+  });
+
+  test("addressToScript refuses an address from another network", () => {
+    // A payment script commits only to the 20-byte hash, so without the network
+    // check a pasted testnet address produces bytes byte-identical to the mainnet
+    // address for the same hash — paying whoever holds that hash on mainnet.
+    const hash = hexToBytes(vectors.keys.pubkeyHash160);
+    const onMainnet = pubKeyHashAddress(hash, networks.mainnet);
+    const onTestnet = pubKeyHashAddress(hash, networks.testnet3);
+    expect(onMainnet).not.toBe(onTestnet);
+    expect(() => addressToScript(onTestnet, networks.mainnet)).toThrow();
+    expect(() => addressToScript(onMainnet, networks.testnet3)).toThrow();
+    // The scripts really are identical, which is why the guard is load-bearing.
+    expect(bytesToHex(addressToScript(onTestnet, networks.testnet3))).toBe(
+      bytesToHex(addressToScript(onMainnet, networks.mainnet)),
+    );
   });
 
   test("Ed25519 and Schnorr P2PKH addresses and scripts match dcrd", () => {
@@ -117,10 +133,10 @@ describe("addresses", () => {
       expect(sch.kind).toBe("pubkeyhash-schnorr");
 
       // The OP_CHECKSIGALT payment scripts, byte-exact with dcrd.
-      expect(bytesToHex(addressToScript(a.p2pkh_ed25519)), `${name} ed script`).toBe(
+      expect(bytesToHex(addressToScript(a.p2pkh_ed25519, network)), `${name} ed script`).toBe(
         a.p2pkh_ed25519_script,
       );
-      expect(bytesToHex(addressToScript(a.p2pkh_schnorr)), `${name} sch script`).toBe(
+      expect(bytesToHex(addressToScript(a.p2pkh_schnorr, network)), `${name} sch script`).toBe(
         a.p2pkh_schnorr_script,
       );
     }
@@ -132,14 +148,14 @@ describe("addresses", () => {
     for (const [name, network] of Object.entries(networks)) {
       const a = vectors.keys.addresses[name]!;
       expect(pubKeyAddress(pub, network), `${name} even-Y`).toBe(a.pubkeyAddr);
-      expect(bytesToHex(addressToScript(a.pubkeyAddr)), `${name} even-Y script`).toBe(
+      expect(bytesToHex(addressToScript(a.pubkeyAddr, network)), `${name} even-Y script`).toBe(
         a.pubkeyAddr_script,
       );
 
       const oddPub = hexToBytes(a.pubkeyAddrOddY_script).subarray(1, 34);
       expect(oddPub[0], "the odd-Y vector really is odd-Y").toBe(0x03);
       expect(pubKeyAddress(oddPub, network), `${name} odd-Y`).toBe(a.pubkeyAddrOddY);
-      expect(bytesToHex(addressToScript(a.pubkeyAddrOddY)), `${name} odd-Y script`).toBe(
+      expect(bytesToHex(addressToScript(a.pubkeyAddrOddY, network)), `${name} odd-Y script`).toBe(
         a.pubkeyAddrOddY_script,
       );
       // Decoding recovers the key with the right parity restored.

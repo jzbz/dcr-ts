@@ -6,7 +6,7 @@
  * leading signature-type byte selecting the key's signature suite. The layout
  * is `base58check(privateKeyId[2] || sigType[1] || privKey[32])`.
  */
-import { base58Decode, base58Encode } from "./base58.js";
+import { base58Decode, base58Encode, maxBase58Length } from "./base58.js";
 import { blake256 } from "./hash.js";
 import type { Network } from "./networks.js";
 import { networks } from "./networks.js";
@@ -48,8 +48,19 @@ export function encodeWif(
   return base58Encode(full);
 }
 
+/**
+ * Longest a WIF string can be: 2 prefix + 1 suite + 32 key + 4 checksum bytes.
+ */
+export const MAX_WIF_LENGTH = maxBase58Length(39);
+
 /** Decode and validate a WIF string. */
 export function decodeWif(wif: string): DecodedWif {
+  // Bound before decoding; base58 decoding is quadratic. See maxBase58Length.
+  if (wif.length > MAX_WIF_LENGTH) {
+    throw new Error(
+      `decodeWif: ${wif.length} characters exceeds the ${MAX_WIF_LENGTH}-character maximum`,
+    );
+  }
   const full = base58Decode(wif);
   if (full.length !== 39) throw new Error("decodeWif: bad length");
   const data = full.subarray(0, 35);
