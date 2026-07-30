@@ -4,3 +4,6 @@ coverage/
 *.log
 .DS_Store
 .vitest/
+
+# `go build` inside vectorgen/ with no -o drops the binary next to the source.
+vectorgen/dcrvectors

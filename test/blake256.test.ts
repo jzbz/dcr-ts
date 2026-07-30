@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { blake256 as nobleBlake256 } from "@noble/hashes/blake1";
 import { blake256, Blake256, hash256, hash160 } from "../src/hash.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, nonEmpty, vectors } from "./helpers.js";
 
 describe("blake256", () => {
   test("canonical empty-string vector", () => {
@@ -12,7 +12,7 @@ describe("blake256", () => {
   });
 
   test("matches dcrd for every hash vector", () => {
-    for (const v of vectors.hashes) {
+    for (const v of nonEmpty(vectors.hashes, "hashes")) {
       const input = hexToBytes(v.input);
       expect(bytesToHex(blake256(input)), `blake256(${v.input})`).toBe(v.blake256);
       expect(bytesToHex(hash256(input)), `hash256(${v.input})`).toBe(v.blake256d);

@@ -9,6 +9,21 @@ export const vectors = JSON.parse(
   readFileSync(join(__dirname, "fixtures", "dcrd-vectors.json"), "utf8"),
 ) as DcrdVectors;
 
+/**
+ * Assert a fixture-driven collection is non-empty before looping over it.
+ *
+ * Every `for (const v of vectors.x)` test passes vacuously if the fixture ever
+ * loses a section — a regenerated or hand-edited file could silently reduce a
+ * suite to zero assertions while still reporting green. Call this first so the
+ * cardinality itself is checked.
+ */
+export function nonEmpty<T>(items: readonly T[], what: string): readonly T[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error(`fixture: expected ${what} to be a non-empty array`);
+  }
+  return items;
+}
+
 export function hexToBytes(hex: string): Uint8Array {
   if (!/^[0-9a-fA-F]*$/.test(hex) || hex.length % 2 !== 0) {
     throw new Error(`invalid hex: "${hex.slice(0, 32)}"`);
@@ -37,17 +52,20 @@ export interface DcrdVectors {
     pubkeyUncompressed: string;
     pubkeyHash160: string;
     addresses: Record<string, AddrVec>;
-    wif: Record<string, { wif: string; wif_payload: string }>;
+    /** One WIF per signature suite: ECDSA (unsuffixed), Schnorr, Ed25519. */
+    wif: Record<string, WifVec>;
   };
   hd: {
     seedHex: string;
     nets: Record<string, HdVec>;
+    leadingZero: LeadingZeroVec;
   };
   tx: {
     serialized: string;
     prefixSer: string;
     witnessSer: string;
     txid: string;
+    txidWitness: string;
     txidFull: string;
     subScript: string;
     sigHashAll: string;
@@ -60,9 +78,63 @@ export interface DcrdVectors {
     prefixSer: string;
     witnessSer: string;
     txid: string;
+    txidWitness: string;
+    txidFull: string;
     subScript: string;
     sighashes: Record<string, Record<string, string>>;
   };
+  /** 3-in/3-out tx: SigHashSingle at the last output index, and undefined hash types. */
+  tx3: {
+    serialized: string;
+    txid: string;
+    subScript: string;
+    /** hashType (as "0x01") -> input ("in0") -> sighash. */
+    sighashes: Record<string, Record<string, string>>;
+  };
+  /** Built from wire.NewTxIn, so the null witness sentinels are pinned. */
+  txNullWitness: {
+    nullValueIn: string;
+    nullBlockHeight: string;
+    nullBlockIndex: string;
+    maxSequence: string;
+    serialized: string;
+    prefixSer: string;
+    witnessSer: string;
+    txid: string;
+    txidWitness: string;
+    txidFull: string;
+  };
+  /** 300 outputs: exercises multi-byte varints and writer growth. */
+  txBig: {
+    numOutputs: number;
+    serialized: string;
+    prefixSer: string;
+    txid: string;
+    txidWitness: string;
+    txidFull: string;
+  };
+  sighashPrefixReuse: { tx3PrefixHash: string; note: string };
+}
+
+/**
+ * The leading-zero HD case. dcrd's `Child` (what dcrwallet derives with) strips
+ * leading zero bytes from a derived private key; `ChildBIP32Std` does not. Both
+ * are pinned because the difference is otherwise invisible — the affected key's
+ * own extended-key string is identical either way, since dcrd pads it back out.
+ */
+export interface LeadingZeroVec {
+  seedHex: string;
+  network: string;
+  path: string;
+  m44hPrivStripped: string;
+  m44hPrivLen: number;
+  m44hXprv: string;
+  childPriv: string;
+  childPub: string;
+  childAddr: string;
+  childPrivBip32Std: string;
+  childPubBip32Std: string;
+  childAddrBip32Std: string;
 }
 
 export interface NetConst {
@@ -81,6 +153,16 @@ export interface NetConst {
   legacyCoinType: number;
 }
 
+export interface WifVec {
+  wif: string;
+  wif_payload: string;
+  wif_schnorr: string;
+  wif_schnorr_payload: string;
+  /** Ed25519 uses its own scalar; a secp256k1 key is not in the Edwards subgroup. */
+  wif_ed25519: string;
+  wif_ed25519_payload: string;
+}
+
 export interface AddrVec {
   p2pkh: string;
   p2pkh_payload: string;
@@ -94,6 +176,10 @@ export interface AddrVec {
   p2sh_scriptHash: string;
   p2sh_script: string;
   pubkeyAddr: string;
+  pubkeyAddr_script: string;
+  /** Same encoding for a key whose Y coordinate is odd (sets the 0x80 flag). */
+  pubkeyAddrOddY: string;
+  pubkeyAddrOddY_script: string;
 }
 
 export interface HdVec {

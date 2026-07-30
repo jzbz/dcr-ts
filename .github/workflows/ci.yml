@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,3 +21,21 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # The test fixture is ground truth generated from dcrd itself, so it is only
+  # worth anything if it still matches what dcrd produces. Regenerate it and
+  # fail on any diff: that catches both a fixture edited by hand and a dcrd
+  # change that moves a byte format out from under the library.
+  vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: vectorgen/go.sum
+      - name: Regenerate dcrd vectors
+        working-directory: vectorgen
+        run: go run . > ../test/fixtures/dcrd-vectors.json
+      - name: Fail if the committed fixture has drifted
+        run: git diff --exit-code -- test/fixtures/dcrd-vectors.json

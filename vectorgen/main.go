@@ -44,6 +44,24 @@ func ck(err error) {
 	}
 }
 
+// A private key whose public key has an odd Y coordinate (02… vs 03…), so the
+// odd-Y branch of the pay-to-pubkey address encoding gets a vector too.
+const oddYPrivHex = "0000000000000000000000000000000000000000000000000000000000000002"
+
+// An Ed25519 scalar. dcrutil.NewWIF runs the key through
+// edwards.PrivKeyFromScalar for the Ed25519 suite, which rejects anything not in
+// the subgroup, so the secp256k1 test key above cannot be reused here. The top
+// nibble is cleared to keep the value below the Edwards group order (~2^252).
+const edPrivHex = "0ef02ca348c524e6392655ba4d29603cd1a7347d9d65cfe93ce1ebffdca22694"
+
+// A seed whose m/44' child private key has a leading zero byte. dcrd's
+// hdkeychain.Child strips that byte and carries the shortened key into the next
+// hardened HMAC, so this seed's m/44'/42' differs between Child (what dcrwallet
+// derives) and ChildBIP32Std (strict BIP32). Roughly 1 seed in 112 is affected
+// on a BIP44 path; without a vector like this one the difference is invisible,
+// because the leading-zero key's own dprv is identical either way.
+const leadingZeroSeedHex = "7b03a6c5e4032241607f9ebddcfb1a39587796b5d4f31231506f8eadcceb0a29"
+
 type NetConst struct {
 	Name                 string `json:"name"`
 	Net                  uint32 `json:"net"`
@@ -109,11 +127,20 @@ func main() {
 		mustHex("deadbeef"),
 		mustHex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
 	}
-	big := make([]byte, 72)
-	for i := range big {
-		big[i] = byte(i)
+	// BLAKE-256 padding boundaries. These cover every branch of the final-block
+	// logic: rem <= 55 (everything fits in one block), rem == 55 (where the
+	// 0x80 padding byte and the 0x01 domain bit merge into 0x81), rem 56..63
+	// (a data block followed by a padding-only block), and exact multiples of
+	// the 64-byte block, which take the zero-counter "nullt" path. The byte
+	// pattern is (i*7)&0xff rather than i so that a transposition in the
+	// message schedule cannot cancel out.
+	for _, n := range []int{54, 55, 56, 57, 63, 64, 65, 72, 119, 127, 128, 129} {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = byte(i * 7)
+		}
+		inputs = append(inputs, b)
 	}
-	inputs = append(inputs, big)
 	var hvs []HashVec
 	for _, in := range inputs {
 		s := blake256.Sum256(in)
@@ -167,28 +194,68 @@ func main() {
 		_, p2shScript := sa.PaymentScript()
 		pa, err := stdaddr.NewAddressPubKeyEcdsaSecp256k1V0(pub, p)
 		ck(err)
-		addrs[name] = map[string]interface{}{
-			"p2pkh":           a.String(),
-			"p2pkh_payload":   hx(base58.Decode(a.String())),
-			"p2pkh_script":    hx(script),
-			"p2sh":            sa.String(),
-			"p2sh_payload":    hx(base58.Decode(sa.String())),
-			"p2sh_scriptHash": hx(sh),
-			"p2sh_script":     hx(p2shScript),
-			"pubkeyAddr":      pa.String(),
-		}
-		wif, err := dcrutil.NewWIF(priv.Serialize(), p.PrivateKeyID, dcrec.STEcdsaSecp256k1)
+		_, pubkeyScript := pa.PaymentScript()
+
+		// The alternative signature suites. These share the P2PKH hash but pay
+		// to OP_CHECKSIGALT with the suite pushed as a small integer, so both
+		// the address prefix and the payment script have to be pinned.
+		ed, err := stdaddr.NewAddressPubKeyHashEd25519V0(pkh, p)
 		ck(err)
-		wifs[name] = map[string]string{
-			"wif":         wif.String(),
-			"wif_payload": hx(base58.Decode(wif.String())),
+		_, edScript := ed.PaymentScript()
+		sch, err := stdaddr.NewAddressPubKeyHashSchnorrSecp256k1V0(pkh, p)
+		ck(err)
+		_, schScript := sch.PaymentScript()
+
+		// An odd-Y key, so the SIG_TYPE_ODD_FLAG branch of the pay-to-pubkey
+		// address encoding is covered as well as the even-Y one above.
+		oddPub := secp256k1.PrivKeyFromBytes(mustHex(oddYPrivHex)).PubKey()
+		oddPa, err := stdaddr.NewAddressPubKeyEcdsaSecp256k1V0(oddPub, p)
+		ck(err)
+		_, oddPubkeyScript := oddPa.PaymentScript()
+
+		addrs[name] = map[string]interface{}{
+			"p2pkh":                 a.String(),
+			"p2pkh_payload":         hx(base58.Decode(a.String())),
+			"p2pkh_script":          hx(script),
+			"p2pkh_ed25519":         ed.String(),
+			"p2pkh_ed25519_script":  hx(edScript),
+			"p2pkh_schnorr":         sch.String(),
+			"p2pkh_schnorr_script":  hx(schScript),
+			"p2sh":                  sa.String(),
+			"p2sh_payload":          hx(base58.Decode(sa.String())),
+			"p2sh_scriptHash":       hx(sh),
+			"p2sh_script":           hx(p2shScript),
+			"pubkeyAddr":            pa.String(),
+			"pubkeyAddr_script":     hx(pubkeyScript),
+			"pubkeyAddrOddY":        oddPa.String(),
+			"pubkeyAddrOddY_script": hx(oddPubkeyScript),
 		}
+
+		// One WIF per signature suite, so decoding the suite byte is pinned for
+		// all three values and not just ECDSA. Ed25519 needs its own scalar.
+		w := map[string]string{}
+		for _, v := range []struct {
+			label  string
+			key    []byte
+			scheme dcrec.SignatureType
+		}{
+			{"", priv.Serialize(), dcrec.STEcdsaSecp256k1},
+			{"_schnorr", priv.Serialize(), dcrec.STSchnorrSecp256k1},
+			{"_ed25519", mustHex(edPrivHex), dcrec.STEd25519},
+		} {
+			wif, err := dcrutil.NewWIF(v.key, p.PrivateKeyID, v.scheme)
+			ck(err)
+			w["wif"+v.label] = wif.String()
+			w["wif"+v.label+"_payload"] = hx(base58.Decode(wif.String()))
+		}
+		wifs[name] = w
 	}
 	keyOut["addresses"] = addrs
 	keyOut["wif"] = wifs
 	out["keys"] = keyOut
 
 	// ---- HD keys (BIP32 Decred) ----
+	mp0 := chaincfg.MainNetParams()
 	seed := mustHex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
 	hdOut := map[string]interface{}{"seedHex": hx(seed)}
 	hdNets := map[string]map[string]interface{}{}
@@ -226,6 +293,56 @@ func main() {
 		}
 	}
 	hdOut["nets"] = hdNets
+
+	// The leading-zero case, mainnet only. `Child` is dcrd's Decred variant and
+	// is what dcrwallet uses for the whole wallet path; `ChildBIP32Std` is
+	// strict BIP32. They agree everywhere except below a private key with a
+	// leading zero byte, so pinning both is what keeps the two apart.
+	lzSeed := mustHex(leadingZeroSeedHex)
+	lzMaster, err := hdkeychain.NewMaster(lzSeed, mp0)
+	ck(err)
+	lzPath := []uint32{
+		hdkeychain.HardenedKeyStart + 44,
+		hdkeychain.HardenedKeyStart + mp0.SLIP0044CoinType,
+		hdkeychain.HardenedKeyStart + 0,
+		0,
+		0,
+	}
+	lzLegacy, lzStrict := lzMaster, lzMaster
+	for _, idx := range lzPath {
+		lzLegacy, err = lzLegacy.Child(idx)
+		ck(err)
+		lzStrict, err = lzStrict.ChildBIP32Std(idx)
+		ck(err)
+	}
+	lzMid, err := lzMaster.Child(hdkeychain.HardenedKeyStart + 44)
+	ck(err)
+	lzMidPriv, err := lzMid.SerializedPrivKey()
+	ck(err)
+	lzLegacyPkh := dcrutil.Hash160(lzLegacy.SerializedPubKey())
+	lzLegacyAddr, err := stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(lzLegacyPkh, mp0)
+	ck(err)
+	lzStrictPkh := dcrutil.Hash160(lzStrict.SerializedPubKey())
+	lzStrictAddr, err := stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(lzStrictPkh, mp0)
+	ck(err)
+	hdOut["leadingZero"] = map[string]interface{}{
+		"seedHex": leadingZeroSeedHex,
+		"network": mp0.Name,
+		"path":    fmt.Sprintf("m/44'/%d'/0'/0/0", mp0.SLIP0044CoinType),
+		// The intermediate key that triggers it, and the proof that its own
+		// serialization is NOT what differs: dcrd pads it back to 32 bytes.
+		"m44hPrivStripped": hx(lzMidPriv),
+		"m44hPrivLen":      len(lzMidPriv),
+		"m44hXprv":         lzMid.String(),
+		// Decred variant (dcrd Child / dcrwallet) — this is what dcr-ts must match.
+		"childPriv": lzLegacy.String(),
+		"childPub":  lzLegacy.Neuter().String(),
+		"childAddr": lzLegacyAddr.String(),
+		// Strict BIP32 (dcrd ChildBIP32Std) — the opt-in variant.
+		"childPrivBip32Std": lzStrict.String(),
+		"childPubBip32Std":  lzStrict.Neuter().String(),
+		"childAddrBip32Std": lzStrictAddr.String(),
+	}
 	out["hd"] = hdOut
 
 	// ---- Transaction / sighash / signing ----
@@ -263,16 +380,62 @@ func main() {
 	der := sig.Serialize()
 
 	out["tx"] = map[string]interface{}{
-		"serialized": hx(fullSer),
-		"prefixSer":  hx(noWitnessSer),
-		"witnessSer": hx(onlyWitnessSer),
-		"txid":       tx.TxHash().String(),
-		"txidFull":   tx.TxHashFull().String(),
-		"subScript":  hx(subScript),
-		"sigHashAll": hx(sigHash),
-		"derSig":     hx(der),
-		"sigScript":  hx(sigScript),
-		"outScript":  hx(outScript),
+		"serialized":  hx(fullSer),
+		"prefixSer":   hx(noWitnessSer),
+		"witnessSer":  hx(onlyWitnessSer),
+		"txid":        tx.TxHash().String(),
+		"txidWitness": tx.TxHashWitness().String(),
+		"txidFull":    tx.TxHashFull().String(),
+		"subScript":   hx(subScript),
+		"sigHashAll":  hx(sigHash),
+		"derSig":      hx(der),
+		"sigScript":   hx(sigScript),
+		"outScript":   hx(outScript),
+	}
+
+	// ---- A transaction built from wire.NewTxIn defaults ----
+	// NewTxIn is what pins the null witness sentinels: BlockHeight is
+	// NullBlockHeight (0x00000000, "references the genesis block") while
+	// BlockIndex is NullBlockIndex (0xffffffff). Every other transaction in this
+	// file sets both explicitly, which is exactly why a wrong default sentinel
+	// would otherwise never be caught.
+	txNull := wire.NewMsgTx()
+	txNull.AddTxIn(wire.NewTxIn(&wire.OutPoint{Hash: *prevHash, Index: 0, Tree: wire.TxTreeRegular},
+		wire.NullValueIn, nil))
+	txNull.AddTxOut(&wire.TxOut{Value: 50000000, Version: 0, PkScript: outScript})
+	out["txNullWitness"] = map[string]interface{}{
+		"nullValueIn":     fmt.Sprintf("%d", wire.NullValueIn),
+		"nullBlockHeight": fmt.Sprintf("%d", wire.NullBlockHeight),
+		"nullBlockIndex":  fmt.Sprintf("%d", wire.NullBlockIndex),
+		"maxSequence":     fmt.Sprintf("%d", uint32(wire.MaxTxInSequenceNum)),
+		"serialized":      hxMust(txNull.Bytes()),
+		"prefixSer":       hxMust(txNull.BytesPrefix()),
+		"witnessSer":      hxMust(txNull.BytesWitness()),
+		"txid":            txNull.TxHash().String(),
+		"txidWitness":     txNull.TxHashWitness().String(),
+		"txidFull":        txNull.TxHashFull().String(),
+	}
+
+	// ---- A transaction large enough to exercise multi-byte varints ----
+	// 300 outputs pushes the output count past 0xfd (so the varint takes the
+	// 3-byte form) and the serialization well past the writer's initial 256-byte
+	// buffer, neither of which any other vector reaches.
+	txBig := wire.NewMsgTx()
+	txBig.AddTxIn(&wire.TxIn{
+		PreviousOutPoint: wire.OutPoint{Hash: *prevHash, Index: 1, Tree: wire.TxTreeRegular},
+		Sequence:         wire.MaxTxInSequenceNum,
+		ValueIn:          1000000000, BlockHeight: 7, BlockIndex: 8,
+	})
+	for i := 0; i < 300; i++ {
+		txBig.AddTxOut(&wire.TxOut{Value: int64(1000 + i), Version: uint16(i % 3), PkScript: outScript})
+	}
+	out["txBig"] = map[string]interface{}{
+		"numOutputs":  300,
+		"serialized":  hxMust(txBig.Bytes()),
+		"prefixSer":   hxMust(txBig.BytesPrefix()),
+		"txid":        txBig.TxHash().String(),
+		"txidWitness": txBig.TxHashWitness().String(),
+		"txidFull":    txBig.TxHashFull().String(),
 	}
 
 	// ---- Multi-input/output tx with every sighash variant ----
@@ -316,12 +479,68 @@ func main() {
 		}
 	}
 	out["tx2"] = map[string]interface{}{
-		"serialized": hx(tx2Full),
-		"prefixSer":  hxMust(tx2.BytesPrefix()),
-		"witnessSer": hxMust(tx2.BytesWitness()),
-		"txid":       tx2.TxHash().String(),
+		"serialized":  hx(tx2Full),
+		"prefixSer":   hxMust(tx2.BytesPrefix()),
+		"witnessSer":  hxMust(tx2.BytesWitness()),
+		"txid":        tx2.TxHash().String(),
+		"txidWitness": tx2.TxHashWitness().String(),
+		"txidFull":    tx2.TxHashFull().String(),
+		"subScript":   hx(outScript),
+		"sighashes":   sighashes,
+	}
+
+	// ---- Signature-hash edge cases ----
+	// A 3-in/3-out transaction so SigHashSingle can be taken at the LAST output
+	// index (idx == len(TxOut)-1), which tx2 cannot reach with only 2 inputs.
+	// Also covers hash types with bits dcrd's calcSignatureHash leaves undefined:
+	// it still produces a hash for them (the prefix logic treats anything that is
+	// not None/Single as All), even though the script engine's
+	// CheckHashTypeEncoding rejects them at verification time.
+	tx3 := wire.NewMsgTx()
+	for i := 0; i < 3; i++ {
+		ph, err := chainhash.NewHashFromStr(fmt.Sprintf("%064x", 0xa0+i))
+		ck(err)
+		tx3.AddTxIn(&wire.TxIn{
+			PreviousOutPoint: wire.OutPoint{Hash: *ph, Index: uint32(i), Tree: wire.TxTreeRegular},
+			Sequence:         uint32(0xfffffff0 + i), ValueIn: int64(100000000 * (i + 1)),
+			BlockHeight: uint32(300 + i), BlockIndex: uint32(i),
+		})
+		tx3.AddTxOut(&wire.TxOut{Value: int64(10000000 * (i + 1)), Version: 0, PkScript: outScript})
+	}
+	tx3.LockTime = 12345
+	tx3.Expiry = 23456
+
+	tx3Hashes := map[string]map[string]string{}
+	for _, ht := range []txscript.SigHashType{
+		txscript.SigHashAll, txscript.SigHashNone, txscript.SigHashSingle,
+		txscript.SigHashAll | txscript.SigHashAnyOneCanPay,
+		txscript.SigHashNone | txscript.SigHashAnyOneCanPay,
+		txscript.SigHashSingle | txscript.SigHashAnyOneCanPay,
+		0x00, 0x04, 0x05, 0x1f, 0x84, 0xff,
+	} {
+		key := fmt.Sprintf("0x%02x", uint8(ht))
+		tx3Hashes[key] = map[string]string{}
+		for idx := 0; idx < 3; idx++ {
+			sh, err := txscript.CalcSignatureHash(outScript, ht, tx3, idx, nil)
+			ck(err)
+			tx3Hashes[key][fmt.Sprintf("in%d", idx)] = hx(sh)
+		}
+	}
+	out["tx3"] = map[string]interface{}{
+		"serialized": hxMust(tx3.Bytes()),
+		"txid":       tx3.TxHash().String(),
 		"subScript":  hx(outScript),
-		"sighashes":  sighashes,
+		"sighashes":  tx3Hashes,
+	}
+
+	// The SigHashAll prefix hash is the plain transaction prefix hash, because
+	// SigHashSerializePrefix (1) and TxSerializeNoWitness (1) are the same value
+	// and the serialized bodies are identical. dcrd exposes this as the
+	// cachedPrefix argument to CalcSignatureHash; pinning it lets a signer reuse
+	// one prefix hash across every input instead of recomputing it per input.
+	out["sighashPrefixReuse"] = map[string]interface{}{
+		"tx3PrefixHash": tx3.TxHash().String(),
+		"note":          "blake256(prefixSer) == the prefix hash inside a SigHashAll sighash",
 	}
 
 	enc := json.NewEncoder(os.Stdout)

@@ -20,11 +20,11 @@ import {
 } from "../src/address.js";
 import { isValidPublicKey } from "../src/keys.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, nonEmpty, vectors } from "./helpers.js";
 
 describe("base58", () => {
   test("raw encode/decode matches dcrd", () => {
-    for (const v of vectors.base58) {
+    for (const v of nonEmpty(vectors.base58, "base58")) {
       const input = hexToBytes(v.input);
       expect(base58Encode(input), `encode ${v.input}`).toBe(v.base58);
       expect(bytesToHex(base58Decode(v.base58)), `decode ${v.base58}`).toBe(v.input);
@@ -32,7 +32,7 @@ describe("base58", () => {
   });
 
   test("checkEncode matches dcrd base58check (prefix 073f)", () => {
-    for (const v of vectors.base58) {
+    for (const v of nonEmpty(vectors.base58, "base58")) {
       const data = hexToBytes("073f" + v.input);
       expect(checkEncode(data)).toBe(v.base58check);
       expect(bytesToHex(checkDecode(v.base58check))).toBe("073f" + v.input);

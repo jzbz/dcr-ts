@@ -22,3 +22,24 @@ go run . > ../test/fixtures/dcrd-vectors.json
 Requires Go and network access to fetch the dcrd modules (pinned in `go.sum`).
 The generated `test/fixtures/dcrd-vectors.json` is committed, so running the
 TypeScript test suite does **not** require Go.
+
+CI runs this and fails on any diff against the committed file, so the fixture
+cannot drift from what dcrd actually produces — and cannot be edited by hand to
+make a failing test pass.
+
+## What is deliberately pinned twice
+
+Two vectors exist because a single-variant fixture cannot see the defect they
+guard against:
+
+- **`hd.leadingZero`** — dcrd's `hdkeychain.Child` strips leading zero bytes from
+  a derived private key and carries the shortened key into the next hardened
+  HMAC; `ChildBIP32Std` follows BIP32 strictly. Both are emitted. The difference
+  only shows below a key with a leading zero byte (~1 seed in 112 on a BIP44
+  path), and it is invisible in that key's own extended-key string because dcrd
+  pads it back to 32 bytes — so only its hardened descendants diverge.
+- **`txNullWitness`** — built from `wire.NewTxIn` rather than an explicit
+  `TxIn`, so the null witness sentinels come from dcrd instead of from this
+  file. `NullBlockHeight` is `0` while `NullBlockIndex` is `0xffffffff`; every
+  other transaction here sets both fields explicitly, which would let a wrong
+  default sit unnoticed.
