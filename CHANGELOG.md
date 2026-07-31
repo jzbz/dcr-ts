@@ -106,6 +106,17 @@ suite, which passed throughout.
   `sigHashPrefixAll`.
 - `classifyScript` — returns *which* template matched along with the hash, which
   `extractHash160` discards; also recognises the two `OP_CHECKSIGALT` templates.
+- **Pay-to-pubkey addresses for the Ed25519 and Schnorr signature suites.** dcrd
+  accepts all three suites under one address ID, distinguished by the payload's
+  first byte, so decoding only ECDSA meant `isValidAddress` reported a legitimate
+  mainnet address as invalid. Adds `pubKeyEd25519Address`, `pubKeySchnorrAddress`
+  and `payToPubKeyAltScript`, all pinned against dcrd. Ed25519 keys are validated
+  as real curve points too — `@noble/curves` shares its field arithmetic with
+  secp256k1, so this costs 0.13 KB of bundle.
+- `DecodedAddress` is now a **discriminated union** on `kind`, so `hash` and
+  `pubKey` exist exactly where they are valid. This removes the non-null
+  assertions it previously forced on the library and on every consumer; narrowing
+  on `kind` replaces them.
 - Optional `wordlist` on every BIP39 entry point, so a non-English mnemonic is
   validated against its own list rather than English.
 - `scriptParses`, `isSignableSigHashType`, `assertSignableSigHashType`,
@@ -146,6 +157,20 @@ affect you.
 - `mnemonicToMasterKey` throws on an invalid mnemonic.
 - `hardened()`, `derive()`, `Writer.u8/u16/u32`, `Reader.bytes` and
   `calcSignatureHash` throw on input they previously coerced.
+
+### Changed — packaging
+
+- `npm run coverage` works: `@vitest/coverage-v8` is now a devDependency, and
+  thresholds live in `vitest.config.ts` (currently 97.6% statements, 90.4%
+  branches) so a real regression fails CI.
+- The tarball no longer ships `src/`, which was unreachable — `exports` declares
+  no subpath, so nothing could import it. It now carries `dist`, the README,
+  SECURITY.md, CHANGELOG.md and the licence: 11 files.
+- Dropped the `lint` script, which was a byte-identical duplicate of `typecheck`
+  that CI never ran. Added `npm run vectors` for regenerating the fixture.
+- CI gains three jobs: coverage with thresholds, a package check that both module
+  formats load and export the same symbols plus `npm pack --dry-run` and
+  `npm audit`, and the fixture-drift check. The test matrix now includes Node 24.
 
 ### Fixed — test infrastructure
 

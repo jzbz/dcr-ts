@@ -11,6 +11,7 @@ import (
 	"github.com/decred/dcrd/chaincfg/v3"
 	"github.com/decred/dcrd/crypto/blake256"
 	"github.com/decred/dcrd/dcrec"
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 	"github.com/decred/dcrd/dcrutil/v4"
@@ -196,6 +197,10 @@ func main() {
 		"pubkeyHash160":      hx(pkh),
 	}
 
+	// An Ed25519 public key for the pay-to-pubkey-ed25519 vectors.
+	_, edPubKey, err := edwards.PrivKeyFromScalar(mustHex(edPrivHex))
+	ck(err)
+
 	addrs := map[string]map[string]interface{}{}
 	wifs := map[string]map[string]string{}
 	for name, p := range nets {
@@ -227,22 +232,38 @@ func main() {
 		ck(err)
 		_, oddPubkeyScript := oddPa.PaymentScript()
 
+		// The two alternative signature suites also have pay-to-pubkey forms.
+		// All three share a 33-byte payload (sigType byte || 32 bytes) but produce
+		// different payment scripts, and dcrd's DecodeAddressV0 accepts all three
+		// under the same address ID -- so a decoder that handles only ECDSA
+		// reports a perfectly valid mainnet address as invalid.
+		edPa, err := stdaddr.NewAddressPubKeyEd25519V0(edPubKey, p)
+		ck(err)
+		_, edPaScript := edPa.PaymentScript()
+		schPa, err := stdaddr.NewAddressPubKeySchnorrSecp256k1V0(pub, p)
+		ck(err)
+		_, schPaScript := schPa.PaymentScript()
+
 		addrs[name] = map[string]interface{}{
-			"p2pkh":                 a.String(),
-			"p2pkh_payload":         hx(base58.Decode(a.String())),
-			"p2pkh_script":          hx(script),
-			"p2pkh_ed25519":         ed.String(),
-			"p2pkh_ed25519_script":  hx(edScript),
-			"p2pkh_schnorr":         sch.String(),
-			"p2pkh_schnorr_script":  hx(schScript),
-			"p2sh":                  sa.String(),
-			"p2sh_payload":          hx(base58.Decode(sa.String())),
-			"p2sh_scriptHash":       hx(sh),
-			"p2sh_script":           hx(p2shScript),
-			"pubkeyAddr":            pa.String(),
-			"pubkeyAddr_script":     hx(pubkeyScript),
-			"pubkeyAddrOddY":        oddPa.String(),
-			"pubkeyAddrOddY_script": hx(oddPubkeyScript),
+			"pubkeyAddrEd25519":        edPa.String(),
+			"pubkeyAddrEd25519_script": hx(edPaScript),
+			"pubkeyAddrSchnorr":        schPa.String(),
+			"pubkeyAddrSchnorr_script": hx(schPaScript),
+			"p2pkh":                    a.String(),
+			"p2pkh_payload":            hx(base58.Decode(a.String())),
+			"p2pkh_script":             hx(script),
+			"p2pkh_ed25519":            ed.String(),
+			"p2pkh_ed25519_script":     hx(edScript),
+			"p2pkh_schnorr":            sch.String(),
+			"p2pkh_schnorr_script":     hx(schScript),
+			"p2sh":                     sa.String(),
+			"p2sh_payload":             hx(base58.Decode(sa.String())),
+			"p2sh_scriptHash":          hx(sh),
+			"p2sh_script":              hx(p2shScript),
+			"pubkeyAddr":               pa.String(),
+			"pubkeyAddr_script":        hx(pubkeyScript),
+			"pubkeyAddrOddY":           oddPa.String(),
+			"pubkeyAddrOddY_script":    hx(oddPubkeyScript),
 		}
 
 		// One WIF per signature suite, so decoding the suite byte is pinned for

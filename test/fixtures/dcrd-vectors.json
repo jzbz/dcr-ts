@@ -348,8 +348,12 @@
         "p2sh_script": "a9141fd0287869bc74cd6edbe7f18a3334855c1b900d87",
         "p2sh_scriptHash": "1fd0287869bc74cd6edbe7f18a3334855c1b900d",
         "pubkeyAddr": "DkM3BXSViucqW4mcMXAH7hXeeW1gQwZeoKEQRcKqqNC2K9LSYSqsD",
+        "pubkeyAddrEd25519": "DkM4Yew6ttXrbdySknoi4AEo3QMrwesTLMuUd8n2WKJKVE4N2S9yW",
+        "pubkeyAddrEd25519_script": "20109ae404be4fc34efc858a6319ce71f348e41f6a90bfb7f42b28c1c10f920daa51be",
         "pubkeyAddrOddY": "DkRMEciAhaj4W5XHTPoEEUCiXFw3SQjKayHGdJBtAEjNArqzGujEz",
         "pubkeyAddrOddY_script": "2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac",
+        "pubkeyAddrSchnorr": "DkM751nxcyKgrX3FWvySMhSHr3queNs4V4ogZpp9DABLKvKeEkgRu",
+        "pubkeyAddrSchnorr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf152be",
         "pubkeyAddr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf1ac"
       },
       "regnet": {
@@ -365,8 +369,12 @@
         "p2sh_script": "a9141fd0287869bc74cd6edbe7f18a3334855c1b900d87",
         "p2sh_scriptHash": "1fd0287869bc74cd6edbe7f18a3334855c1b900d",
         "pubkeyAddr": "Rk41eTSAQEbZ7rRtzRWb4n4aEwTXJ1ctcuu5QCfF5adSgN6y8JSYD",
+        "pubkeyAddrEd25519": "Rk431avmaDWaDRdjPhA21Emidqohpivh9xa9bj7RkXjjrSptNFejy",
+        "pubkeyAddrEd25519_script": "20109ae404be4fc34efc858a6319ce71f348e41f6a90bfb7f42b28c1c10f920daa51be",
         "pubkeyAddrOddY": "Rk8KhYhqNuhn7sBa6J9YBYje7hNtKUnZQZwwbtXHQTAnY5cXMfVgG",
         "pubkeyAddrOddY_script": "2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac",
+        "pubkeyAddrSchnorr": "Rk45XwndJJJQUJhY9qKkJmyDSVHkXSvJJfUMYR9YTNckh96CXe6kT",
+        "pubkeyAddrSchnorr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf152be",
         "pubkeyAddr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf1ac"
       },
       "simnet": {
@@ -382,8 +390,12 @@
         "p2sh_script": "a9141fd0287869bc74cd6edbe7f18a3334855c1b900d87",
         "p2sh_scriptHash": "1fd0287869bc74cd6edbe7f18a3334855c1b900d",
         "pubkeyAddr": "SkLU5j28qDAXHnK7eKN6vSdr8zegJvVj33xWkfdkP3AP7JXN8Lg98",
+        "pubkeyAddrEd25519": "SkLVSrWk1C5YPMWx3b1XruLzXtzrqdoXa6daxC5w3zGgHPFJYbS9c",
+        "pubkeyAddrEd25519_script": "20109ae404be4fc34efc858a6319ce71f348e41f6a90bfb7f42b28c1c10f920daa51be",
         "pubkeyAddrOddY": "SkQn8pHootGkHo4nkC143DJv1ka3LPfPpi1NxMVnhuhiy22tcnKaT",
         "pubkeyAddrOddY_script": "2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac",
+        "pubkeyAddrSchnorr": "SkLXyDNbjGsNeEakojBGASYVLYUuYMo8ioXntt83kq9h85WaExHvN",
+        "pubkeyAddrSchnorr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf152be",
         "pubkeyAddr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf1ac"
       },
       "testnet3": {
@@ -399,8 +411,12 @@
         "p2sh_script": "a9141fd0287869bc74cd6edbe7f18a3334855c1b900d87",
         "p2sh_scriptHash": "1fd0287869bc74cd6edbe7f18a3334855c1b900d",
         "pubkeyAddr": "TkKmFrHPTqRfBmAJm74pzWrw4YyS2AY1zs8hr1hZVWjp7gHHU64WD",
+        "pubkeyAddrEd25519": "TkKncymzdpLgHLN9ANiFvya5TTKcYsqpXuon3Y9kATr7Hm1EQPoiv",
+        "pubkeyAddrEd25519_script": "20109ae404be4fc34efc858a6319ce71f348e41f6a90bfb7f42b28c1c10f920daa51be",
         "pubkeyAddrOddY": "TkQ5JwZ4SWXtBmuyryhn7HXzwJto3dhgnXBa3hZbpPH9yPnnjHyAg",
         "pubkeyAddrOddY_script": "2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac",
+        "pubkeyAddrSchnorr": "TkKq9LdrMu8WYDRwvWszEWmaG6ofFbqRgchyzEBrsJj88TGWma3Sw",
+        "pubkeyAddrSchnorr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf152be",
         "pubkeyAddr_script": "21025ceeba2ab4a635df2c0301a3d773da06ac5a18a7c3e0d09a795d7e57d233edf1ac"
       }
     },

@@ -22,6 +22,44 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Thresholds live in vitest.config.ts; this fails if coverage drops.
+      - run: npm run coverage
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Both module formats must load and agree on what they export.
+      - name: Check the published entry points resolve
+        run: |
+          node -e 'import("./dist/index.js").then(m => {
+            const cjs = require("./dist/index.cjs");
+            const esm = Object.keys(m).sort(), req = Object.keys(cjs).sort();
+            if (esm.length === 0) throw new Error("ESM build exports nothing");
+            if (JSON.stringify(esm) !== JSON.stringify(req)) {
+              throw new Error("ESM and CJS export different symbols");
+            }
+            console.log(`both builds export ${esm.length} symbols`);
+          })'
+      - name: Show what would be published
+        run: npm pack --dry-run
+      - run: npm audit --audit-level=high
+
   # The test fixture is ground truth generated from dcrd itself, so it is only
   # worth anything if it still matches what dcrd produces. Regenerate it and
   # fail on any diff: that catches both a fixture edited by hand and a dcrd

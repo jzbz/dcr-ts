@@ -195,6 +195,11 @@ export interface AddrVec {
   p2sh_script: string;
   pubkeyAddr: string;
   pubkeyAddr_script: string;
+  /** The same address ID also carries the two alternative signature suites. */
+  pubkeyAddrEd25519: string;
+  pubkeyAddrEd25519_script: string;
+  pubkeyAddrSchnorr: string;
+  pubkeyAddrSchnorr_script: string;
   /** Same encoding for a key whose Y coordinate is odd (sets the 0x80 flag). */
   pubkeyAddrOddY: string;
   pubkeyAddrOddY_script: string;

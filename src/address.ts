@@ -18,30 +18,66 @@ import { hash160 } from "./hash.js";
 import type { Network } from "./networks.js";
 import { networks } from "./networks.js";
 import {
+  payToPubKeyAltScript,
   payToPubKeyHashAltScript,
   payToPubKeyHashScript,
   payToPubKeyScript,
   payToScriptHashScript,
 } from "./script.js";
-import { assertCompressedPubKey, assertPubKey, isValidPublicKey } from "./keys.js";
+import { copyOf } from "./bytes.js";
+import {
+  assertCompressedPubKey,
+  assertPubKey,
+  isValidEd25519PublicKey,
+  isValidPublicKey,
+} from "./keys.js";
 
 export type AddressKind =
   | "pubkeyhash-ecdsa"
   | "pubkeyhash-ed25519"
   | "pubkeyhash-schnorr"
   | "scripthash"
-  | "pubkey-ecdsa";
+  | "pubkey-ecdsa"
+  | "pubkey-ed25519"
+  | "pubkey-schnorr";
 
-export interface DecodedAddress {
-  readonly network: Network;
-  readonly kind: AddressKind;
-  /** 20-byte hash for the hash-based kinds. */
-  readonly hash?: Uint8Array;
-  /** Serialized public key for the pay-to-pubkey kind. */
-  readonly pubKey?: Uint8Array;
-  /** The original address string. */
-  readonly address: string;
-}
+/** The hash-based address kinds, which carry a 20-byte `hash`. */
+export type HashAddressKind =
+  | "pubkeyhash-ecdsa"
+  | "pubkeyhash-ed25519"
+  | "pubkeyhash-schnorr"
+  | "scripthash";
+
+/** The pay-to-pubkey kinds, which carry a serialized `pubKey`. */
+export type PubKeyAddressKind = "pubkey-ecdsa" | "pubkey-ed25519" | "pubkey-schnorr";
+
+/**
+ * A decoded address.
+ *
+ * A discriminated union on `kind`, so `hash` and `pubKey` are present exactly
+ * where they exist — narrowing on `kind` (or on `"hash" in decoded`) replaces
+ * what would otherwise be a non-null assertion at every use.
+ */
+export type DecodedAddress =
+  | {
+      readonly network: Network;
+      readonly kind: HashAddressKind;
+      /** 20-byte hash. */
+      readonly hash: Uint8Array;
+      /** The original address string. */
+      readonly address: string;
+    }
+  | {
+      readonly network: Network;
+      readonly kind: PubKeyAddressKind;
+      /**
+       * The serialized public key: 33-byte compressed secp256k1 for
+       * `pubkey-ecdsa` and `pubkey-schnorr`, 32-byte Ed25519 for
+       * `pubkey-ed25519`.
+       */
+      readonly pubKey: Uint8Array;
+      readonly address: string;
+    };
 
 interface PrefixEntry {
   network: Network;
@@ -114,27 +150,71 @@ function encodePubKeyData(compressedPubKey: Uint8Array): Uint8Array {
   return data;
 }
 
-function decodePubKeyData(data: Uint8Array): Uint8Array {
+/**
+ * Decode a pay-to-pubkey payload for any of the three signature suites.
+ *
+ * All three share the layout `identifier || 32 bytes`, where the identifier is
+ * the suite with the high bit set when a secp256k1 key's Y is odd. dcrd's
+ * `DecodeAddressV0` accepts all three under one address ID, so handling only
+ * ECDSA reported a legitimate mainnet address as invalid.
+ */
+function decodePubKeyData(data: Uint8Array): { kind: PubKeyAddressKind; pubKey: Uint8Array } {
   const sigType = data[0]! & ~SIG_TYPE_ODD_FLAG;
-  if (sigType !== SignatureTypeEcdsa) {
-    throw new Error("decodeAddress: unsupported pubkey signature type");
-  }
   const odd = (data[0]! & SIG_TYPE_ODD_FLAG) !== 0;
-  const out = new Uint8Array(33);
-  out[0] = odd ? 0x03 : 0x02;
-  out.set(data.subarray(1), 1);
-  if (!isValidPublicKey(out)) {
+
+  if (sigType === SignatureTypeEd25519) {
+    // The payload *is* the Ed25519 key; there is no oddness bit to apply.
+    const pubKey = copyOf(data, 1, 32);
+    if (!isValidEd25519PublicKey(pubKey)) {
+      throw new Error("decodeAddress: pubkey is not a valid Ed25519 curve point");
+    }
+    return { kind: "pubkey-ed25519", pubKey };
+  }
+
+  if (sigType !== SignatureTypeEcdsa && sigType !== SignatureTypeSchnorr) {
+    throw new Error(`decodeAddress: unsupported pubkey signature type ${sigType}`);
+  }
+  // secp256k1: rebuild the compressed serialization from X plus the oddness bit.
+  const pubKey = new Uint8Array(33);
+  pubKey[0] = odd ? 0x03 : 0x02;
+  pubKey.set(data.subarray(1), 1);
+  if (!isValidPublicKey(pubKey)) {
     throw new Error("decodeAddress: pubkey is not a valid curve point");
   }
-  return out;
+  return { kind: sigType === SignatureTypeEcdsa ? "pubkey-ecdsa" : "pubkey-schnorr", pubKey };
 }
 
-// dcrec.STEcdsaSecp256k1
+// dcrec.SignatureType values.
 const SignatureTypeEcdsa = 0;
+const SignatureTypeEd25519 = 1;
+const SignatureTypeSchnorr = 2;
 
 /** Encode a compressed public key as a pay-to-pubkey (secp256k1 ECDSA) address. */
 export function pubKeyAddress(compressedPubKey: Uint8Array, network: Network): string {
   return encode(network.pubKeyAddrId, encodePubKeyData(compressedPubKey));
+}
+
+/** Encode a 32-byte Ed25519 public key as a pay-to-pubkey address. */
+export function pubKeyEd25519Address(pubKey: Uint8Array, network: Network): string {
+  if (pubKey.length !== 32) {
+    throw new Error(`pubKeyEd25519Address: an Ed25519 public key must be 32 bytes, got ${pubKey.length}`);
+  }
+  if (!isValidEd25519PublicKey(pubKey)) {
+    throw new Error("pubKeyEd25519Address: public key is not a valid Ed25519 curve point");
+  }
+  const data = new Uint8Array(33);
+  data[0] = SignatureTypeEd25519;
+  data.set(pubKey, 1);
+  return encode(network.pubKeyAddrId, data);
+}
+
+/** Encode a compressed public key as a pay-to-pubkey (secp256k1 Schnorr) address. */
+export function pubKeySchnorrAddress(compressedPubKey: Uint8Array, network: Network): string {
+  assertCompressedPubKey(compressedPubKey, "pubKeySchnorrAddress");
+  const data = new Uint8Array(33);
+  data[0] = SignatureTypeSchnorr | (compressedPubKey[0] === 0x03 ? SIG_TYPE_ODD_FLAG : 0);
+  data.set(compressedPubKey.subarray(1), 1);
+  return encode(network.pubKeyAddrId, data);
 }
 
 /**
@@ -197,16 +277,19 @@ export function decodeAddress(address: string, network?: Network): DecodedAddres
   }
 
   if (match.kind === "pubkey-ecdsa") {
+    // One address ID covers all three signature suites; the payload's first byte
+    // says which, so the concrete kind comes from decoding rather than the prefix.
     if (payload.length !== 33) throw new Error("decodeAddress: bad pubkey length");
-    return {
-      network: match.network,
-      kind: match.kind,
-      pubKey: decodePubKeyData(payload),
-      address,
-    };
+    const { kind, pubKey } = decodePubKeyData(payload);
+    return { network: match.network, kind, pubKey, address };
   }
   if (payload.length !== 20) throw new Error("decodeAddress: bad hash length");
-  return { network: match.network, kind: match.kind, hash: payload.slice(), address };
+  return {
+    network: match.network,
+    kind: match.kind as HashAddressKind,
+    hash: copyOf(payload, 0, 20),
+    address,
+  };
 }
 
 /** True when `address` is a well-formed address (optionally for `network`). */
@@ -241,17 +324,21 @@ export function addressToScript(address: string, network: Network): Uint8Array {
   const d = decodeAddress(address, network);
   switch (d.kind) {
     case "pubkeyhash-ecdsa":
-      return payToPubKeyHashScript(d.hash!);
+      return payToPubKeyHashScript(d.hash);
     // The alternative signature suites use OP_CHECKSIGALT with the signature
     // type pushed as a small integer (Ed25519 = 1, Schnorr = 2).
     case "pubkeyhash-ed25519":
-      return payToPubKeyHashAltScript(d.hash!, 1);
+      return payToPubKeyHashAltScript(d.hash, 1);
     case "pubkeyhash-schnorr":
-      return payToPubKeyHashAltScript(d.hash!, 2);
+      return payToPubKeyHashAltScript(d.hash, 2);
     case "scripthash":
-      return payToScriptHashScript(d.hash!);
+      return payToScriptHashScript(d.hash);
     case "pubkey-ecdsa":
-      return payToPubKeyScript(d.pubKey!);
+      return payToPubKeyScript(d.pubKey);
+    case "pubkey-ed25519":
+      return payToPubKeyAltScript(d.pubKey, 1);
+    case "pubkey-schnorr":
+      return payToPubKeyAltScript(d.pubKey, 2);
   }
 }
 

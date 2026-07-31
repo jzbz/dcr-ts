@@ -43,6 +43,8 @@ export {
 // Keys
 export {
   assertCompressedPubKey,
+  assertPubKey,
+  isValidEd25519PublicKey,
   CURVE_ORDER,
   isValidPrivateKey,
   isValidPublicKey,
@@ -52,12 +54,16 @@ export {
 // Addresses
 export {
   type AddressKind,
+  type HashAddressKind,
+  type PubKeyAddressKind,
   type DecodedAddress,
   pubKeyHashAddress,
   pubKeyHashEd25519Address,
   pubKeyHashSchnorrAddress,
   scriptHashAddress,
   pubKeyAddress,
+  pubKeyEd25519Address,
+  pubKeySchnorrAddress,
   addressFromPubKey,
   addressFromScript,
   decodeAddress,
@@ -84,6 +90,7 @@ export {
   payToPubKeyHashAltScript,
   payToScriptHashScript,
   payToPubKeyScript,
+  payToPubKeyAltScript,
   isPayToPubKeyHash,
   isPayToScriptHash,
   extractHash160,

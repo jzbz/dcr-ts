@@ -185,6 +185,38 @@ export function payToPubKeyScript(compressedPubKey: Uint8Array): Uint8Array {
   return out;
 }
 
+/**
+ * Build a pay-to-pubkey script for an alternative signature suite.
+ *
+ * Ed25519 takes a 32-byte key: `<32-byte pubkey> OP_1 OP_CHECKSIGALT`.
+ * secp256k1 Schnorr takes a 33-byte compressed key:
+ * `<33-byte pubkey> OP_2 OP_CHECKSIGALT`.
+ *
+ * The suite is pushed as a small integer, exactly as in
+ * {@link payToPubKeyHashAltScript}.
+ */
+export function payToPubKeyAltScript(pubKey: Uint8Array, sigType: 1 | 2): Uint8Array {
+  if (sigType === 1) {
+    if (pubKey.length !== 32) {
+      throw new Error(`payToPubKeyAlt: an Ed25519 public key must be 32 bytes, got ${pubKey.length}`);
+    }
+    const out = new Uint8Array(35);
+    out[0] = OP.DATA_32;
+    out.set(pubKey, 1);
+    out[33] = OP.OP_1;
+    out[34] = OP.CHECKSIGALT;
+    return out;
+  }
+  if (sigType !== 2) throw new Error("payToPubKeyAlt: bad sigType");
+  assertCompressedPubKey(pubKey, "payToPubKeyAlt");
+  const out = new Uint8Array(36);
+  out[0] = OP.DATA_33;
+  out.set(pubKey, 1);
+  out[34] = OP.OP_2;
+  out[35] = OP.CHECKSIGALT;
+  return out;
+}
+
 /** True when `script` is a canonical version-0 P2PKH template. */
 export function isPayToPubKeyHash(script: Uint8Array): boolean {
   return (

@@ -6,6 +6,7 @@
  * keys, scalar/point arithmetic for BIP32 derivation).
  */
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { ed25519 } from "@noble/curves/ed25519";
 
 /** The secp256k1 group order. */
 export const CURVE_ORDER: bigint = secp256k1.CURVE.n;
@@ -26,6 +27,24 @@ export function publicKeyFromPrivate(privateKey: Uint8Array, compressed = true):
 export function isValidPublicKey(key: Uint8Array): boolean {
   try {
     secp256k1.ProjectivePoint.fromHex(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when `key` is a valid 32-byte Ed25519 public key.
+ *
+ * Decred's alternative signature suites are recognised on decode even though this
+ * library cannot sign for them, and an address whose key is not on the curve is
+ * unspendable — so it should not decode as valid. Ed25519 comes from the same
+ * `@noble/curves` package already in use, so this adds no dependency.
+ */
+export function isValidEd25519PublicKey(key: Uint8Array): boolean {
+  if (key.length !== 32) return false;
+  try {
+    ed25519.ExtendedPoint.fromHex(key);
     return true;
   } catch {
     return false;

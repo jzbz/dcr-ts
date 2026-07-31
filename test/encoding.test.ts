@@ -13,6 +13,8 @@ import {
   decodeAddress,
   isValidAddress,
   pubKeyAddress,
+  pubKeyEd25519Address,
+  pubKeySchnorrAddress,
   pubKeyHashAddress,
   pubKeyHashEd25519Address,
   pubKeyHashSchnorrAddress,
@@ -85,18 +87,23 @@ describe("addresses", () => {
 
   test("decode classifies kind, hash and network", () => {
     const a = vectors.keys.addresses.mainnet!;
+    // Narrowing on `kind` is what makes `hash`/`pubKey` reachable — the union
+    // removes the non-null assertions these used to need.
     const d = decodeAddress(a.p2pkh);
     expect(d.kind).toBe("pubkeyhash-ecdsa");
     expect(d.network.name).toBe("mainnet");
-    expect(bytesToHex(d.hash!)).toBe(vectors.keys.pubkeyHash160);
+    if (d.kind !== "pubkeyhash-ecdsa") throw new Error("unreachable");
+    expect(bytesToHex(d.hash)).toBe(vectors.keys.pubkeyHash160);
 
     const s = decodeAddress(a.p2sh);
     expect(s.kind).toBe("scripthash");
-    expect(bytesToHex(s.hash!)).toBe(a.p2sh_scriptHash);
+    if (s.kind !== "scripthash") throw new Error("unreachable");
+    expect(bytesToHex(s.hash)).toBe(a.p2sh_scriptHash);
 
     const p = decodeAddress(a.pubkeyAddr);
     expect(p.kind).toBe("pubkey-ecdsa");
-    expect(bytesToHex(p.pubKey!)).toBe(vectors.keys.pubkeyCompressed);
+    if (p.kind !== "pubkey-ecdsa") throw new Error("unreachable");
+    expect(bytesToHex(p.pubKey)).toBe(vectors.keys.pubkeyCompressed);
   });
 
   test("addressToScript reproduces the dcrd pkScript", () => {
@@ -160,10 +167,63 @@ describe("addresses", () => {
         a.pubkeyAddrOddY_script,
       );
       // Decoding recovers the key with the right parity restored.
-      expect(bytesToHex(decodeAddress(a.pubkeyAddrOddY).pubKey!), `${name} odd-Y decode`).toBe(
-        bytesToHex(oddPub),
-      );
+      const decodedOdd = decodeAddress(a.pubkeyAddrOddY);
+      if (decodedOdd.kind !== "pubkey-ecdsa") throw new Error("unreachable");
+      expect(bytesToHex(decodedOdd.pubKey), `${name} odd-Y decode`).toBe(bytesToHex(oddPub));
     }
+  });
+
+  test("pay-to-pubkey addresses for all three signature suites match dcrd", () => {
+    // dcrd's DecodeAddressV0 accepts ECDSA, Ed25519 and Schnorr under one address
+    // ID, distinguished by the payload's first byte. Handling only ECDSA meant
+    // isValidAddress reported a legitimate mainnet address as invalid.
+    for (const [name, network] of Object.entries(networks)) {
+      const a = vectors.keys.addresses[name]!;
+
+      // The Ed25519 key is the payload's 32 bytes; there is no oddness bit.
+      const edPub = hexToBytes(a.pubkeyAddrEd25519_script).subarray(1, 33);
+      expect(edPub.length).toBe(32);
+      expect(pubKeyEd25519Address(edPub, network), `${name} ed25519 addr`).toBe(
+        a.pubkeyAddrEd25519,
+      );
+      expect(bytesToHex(addressToScript(a.pubkeyAddrEd25519, network)), `${name} ed25519 script`)
+        .toBe(a.pubkeyAddrEd25519_script);
+
+      // Schnorr uses the compressed secp256k1 key, like ECDSA.
+      expect(pubKeySchnorrAddress(pub, network), `${name} schnorr addr`).toBe(
+        a.pubkeyAddrSchnorr,
+      );
+      expect(bytesToHex(addressToScript(a.pubkeyAddrSchnorr, network)), `${name} schnorr script`)
+        .toBe(a.pubkeyAddrSchnorr_script);
+
+      // All three decode, with the suite recovered from the payload.
+      for (const [addr, kind, expectedKey] of [
+        [a.pubkeyAddr, "pubkey-ecdsa", vectors.keys.pubkeyCompressed],
+        [a.pubkeyAddrEd25519, "pubkey-ed25519", bytesToHex(edPub)],
+        [a.pubkeyAddrSchnorr, "pubkey-schnorr", vectors.keys.pubkeyCompressed],
+      ] as const) {
+        const d = decodeAddress(addr, network);
+        expect(d.kind, `${name} ${addr.slice(0, 8)}`).toBe(kind);
+        expect(isValidAddress(addr, network), `${name} ${kind} valid`).toBe(true);
+        if (d.kind === "pubkeyhash-ecdsa" || d.kind === "scripthash") throw new Error("unreachable");
+        if ("pubKey" in d) expect(bytesToHex(d.pubKey), `${name} ${kind} key`).toBe(expectedKey);
+      }
+    }
+  });
+
+  test("a pay-to-pubkey address whose key is off the curve is refused", () => {
+    // Same bug class as the ECDSA case: an unspendable address must not validate.
+    const bad = new Uint8Array(35);
+    bad[0] = networks.mainnet.pubKeyAddrId[0];
+    bad[1] = networks.mainnet.pubKeyAddrId[1];
+    bad[2] = 1; // Ed25519
+    bad.fill(0xff, 3); // not a valid Edwards point
+    const addr = checkEncode(bad);
+    expect(() => decodeAddress(addr)).toThrow(/Ed25519 curve point/);
+    expect(isValidAddress(addr)).toBe(false);
+    // And an unknown suite byte is still rejected.
+    bad[2] = 7;
+    expect(() => decodeAddress(checkEncode(bad))).toThrow(/unsupported pubkey signature type/);
   });
 
   test("address encoders reject anything that is not a real public key", () => {
