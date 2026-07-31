@@ -23,7 +23,7 @@ import {
   payToPubKeyScript,
   payToScriptHashScript,
 } from "./script.js";
-import { assertCompressedPubKey, isValidPublicKey } from "./keys.js";
+import { assertCompressedPubKey, assertPubKey, isValidPublicKey } from "./keys.js";
 
 export type AddressKind =
   | "pubkeyhash-ecdsa"
@@ -140,15 +140,21 @@ export function pubKeyAddress(compressedPubKey: Uint8Array, network: Network): s
 /**
  * Derive the standard P2PKH address for a public key (`hash160` of the key).
  *
- * The key is validated as a real curve point first. Without that, any byte string
+ * Accepts **either** serialization: 33-byte compressed or 65-byte uncompressed.
+ * They hash to different addresses, and both are legitimate — dcrd hashes
+ * whichever form the caller holds — so refusing the uncompressed form would break
+ * the only address a signature script built with
+ * `signatureScript(..., compressed = false)` can ever satisfy.
+ *
+ * The key is validated as a real curve point. Without that, any byte string
  * hashes to something and produces a well-formed, valid-checksum address that no
  * key can ever spend from — and the way to hit it is mundane: passing
  * `privateKeyBytes()` where `publicKey()` was meant type-checks silently, because
  * both are `Uint8Array`, and 32 vs 33 bytes is invisible at the call site.
  */
-export function addressFromPubKey(compressedPubKey: Uint8Array, network: Network): string {
-  assertCompressedPubKey(compressedPubKey, "addressFromPubKey");
-  return pubKeyHashAddress(hash160(compressedPubKey), network);
+export function addressFromPubKey(pubKey: Uint8Array, network: Network): string {
+  assertPubKey(pubKey, "addressFromPubKey");
+  return pubKeyHashAddress(hash160(pubKey), network);
 }
 
 /** Derive the P2SH address that pays to `redeemScript`. */
@@ -226,6 +232,12 @@ export function isValidAddress(address: string, network?: Network): boolean {
  * an address of unknown origin; it returns the network it found.
  */
 export function addressToScript(address: string, network: Network): Uint8Array {
+  // Checked at runtime, not just by the type system: a JavaScript caller (or a
+  // stale `.d.ts`) can still pass nothing, and silently falling back to
+  // network-agnostic decoding is the exact failure this parameter exists to stop.
+  if (!network || typeof network.name !== "string") {
+    throw new Error("addressToScript: a network is required (pass mainnet, testnet3, simnet or regnet)");
+  }
   const d = decodeAddress(address, network);
   switch (d.kind) {
     case "pubkeyhash-ecdsa":

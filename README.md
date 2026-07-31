@@ -13,6 +13,12 @@ second hand-rolled one.
 
 Built from scratch using dcrd as the specification. ISC licensed.
 
+> **Not audited.** dcr-ts has had no independent security audit. Byte formats are
+> pinned to dcrd; that says nothing about memory handling, timing or logic bugs.
+> It also cannot erase secrets from memory, offers no constant-time guarantees, and
+> does no transaction-policy validation. Read [SECURITY.md](SECURITY.md) before
+> trusting it with funds.
+
 ## Design
 
 The hard rule mirrors the Rust sibling [`dcr-rs`](https://github.com/jzbz/dcr-rs):
@@ -156,7 +162,9 @@ private key and carries the shortened string into the next hardened HMAC:
 So for a parent scalar with a leading zero byte the hardened HMAC input is
 `0x00 ‖ key31 ‖ 0x00 ‖ ser32(i)` rather than BIP32's
 `0x00 ‖ 0x00 ‖ key31 ‖ ser32(i)` — the same length, different bytes, and every
-descendant diverges. About **1 seed in 112** is affected on a BIP44 path.
+descendant diverges. Roughly **1 seed in 128** is affected on a BIP44 path — two hardened levels
+below the master, each with a 1/256 chance of a leading zero byte. Measured
+0.8–0.9% over 20,000 seeds.
 
 dcrd exposes both variants and dcrwallet uses the legacy one for the entire
 wallet path, so this library mirrors that:

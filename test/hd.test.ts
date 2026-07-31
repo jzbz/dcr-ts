@@ -175,15 +175,26 @@ describe("HD keys (BIP32, Decred serialization)", () => {
       "m/1.5",
       "m/2147483648",
       "m/abc",
-      // Capital M means *public* derivation in BIP32, so it must not be
-      // silently accepted as a private path.
-      "M/0",
-      "M",
+      "x/0",
+      "mm/0",
     ]) {
       expect(() => master.derivePath(bad), bad).toThrow();
     }
     // Both hardened markers work and agree.
     expect(master.derivePath("m/44h/0h").toString()).toBe(master.derivePath("m/44'/0'").toString());
+  });
+
+  test("accepts BIP32's capital-M public-chain spelling", () => {
+    // `M/…` and `m/…` name the same path in BIP32; only the key you start from
+    // differs. Rejecting `M` would break the notation a watch-only caller writes,
+    // and deriving a hardened element from a public key is already refused.
+    const master = ExtendedKey.fromSeed(seed, networks.mainnet);
+    expect(master.derivePath("M/44'/42'/0'").toString()).toBe(
+      master.derivePath("m/44'/42'/0'").toString(),
+    );
+    const acctPub = master.derivePath("m/44'/42'/0'").neuter();
+    expect(acctPub.derivePath("M/0/5").toString()).toBe(acctPub.derivePath("m/0/5").toString());
+    expect(() => acctPub.derivePath("M/0'")).toThrow(/hardened/);
   });
 
   test("rejects out-of-range indices instead of silently wrapping", () => {

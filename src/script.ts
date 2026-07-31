@@ -221,7 +221,11 @@ export function extractHash160(script: Uint8Array): Uint8Array | null {
 }
 
 /** What {@link classifyScript} recognises. */
-export type ScriptKind = "pubkeyhash" | "pubkeyhash-ed25519" | "pubkeyhash-schnorr" | "scripthash";
+export type ScriptKind =
+  | "pubkeyhash-ecdsa"
+  | "pubkeyhash-ed25519"
+  | "pubkeyhash-schnorr"
+  | "scripthash";
 
 /**
  * Classify a version-0 payment script and return its 20-byte hash.
@@ -234,7 +238,7 @@ export type ScriptKind = "pubkeyhash" | "pubkeyhash-ed25519" | "pubkeyhash-schno
  * classify before.
  */
 export function classifyScript(script: Uint8Array): { kind: ScriptKind; hash: Uint8Array } | null {
-  if (isPayToPubKeyHash(script)) return { kind: "pubkeyhash", hash: copyOf(script, 3, 20) };
+  if (isPayToPubKeyHash(script)) return { kind: "pubkeyhash-ecdsa", hash: copyOf(script, 3, 20) };
   if (isPayToScriptHash(script)) return { kind: "scripthash", hash: copyOf(script, 2, 20) };
   if (
     script.length === 26 &&

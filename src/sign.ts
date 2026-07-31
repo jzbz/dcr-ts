@@ -106,8 +106,8 @@ export function signatureScript(
  * Sign input `idx` in place: compute and assign its P2PKH signature script.
  * Returns the signed transaction for chaining.
  *
- * For a transaction with several inputs prefer {@link signP2PKHInputs}, which is
- * O(N) rather than O(N²).
+ * For a transaction with several inputs prefer {@link signP2PKHInputs}, which
+ * reuses one prefix hash instead of recomputing it per input.
  */
 export function signP2PKHInput(
   tx: Transaction,
@@ -143,10 +143,15 @@ export interface P2PKHInputToSign {
  * Sign several P2PKH inputs in place, reusing one prefix hash.
  *
  * `calcSignatureHash` re-serializes and re-hashes the whole transaction prefix on
- * every call, so signing N inputs one at a time is O(N²) — the dominant cost for
- * a transaction with many inputs. Under `SigHashAll` without `AnyOneCanPay` the
- * prefix half is input-independent, so it is computed once here and reused, which
- * is what dcrd's `cachedPrefix` parameter is for.
+ * every call — every outpoint and every output script — which is the dominant
+ * cost for a transaction with many inputs. Under `SigHashAll` without
+ * `AnyOneCanPay` that half is input-independent, so it is computed once here and
+ * reused, which is what dcrd's `cachedPrefix` parameter is for.
+ *
+ * This lowers the constant, not the exponent: the witness half still walks every
+ * input per call, so signing stays O(N²). On the hashing alone it measured 12x at
+ * 50 inputs and 26x at 500; end to end the gain is smaller (1.7x at 250) because
+ * ECDSA dominates.
  *
  * The prefix hash is taken **before** any signature script is assigned, which is
  * also why this is correct: the prefix commits to no witness data, so writing

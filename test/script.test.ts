@@ -132,8 +132,10 @@ describe("script classifiers", () => {
   test("classifyScript keeps the kind, which extractHash160 discards", () => {
     // Encoding a P2SH hash as a P2PKH address yields a different, valid address
     // for the same script, so losing the kind is a real hazard.
+    // The kind strings match AddressKind exactly, so a caller can hand one
+    // straight to the matching encoder without translating.
     expect(classifyScript(payToPubKeyHashScript(pkh))).toEqual({
-      kind: "pubkeyhash",
+      kind: "pubkeyhash-ecdsa",
       hash: pkh,
     });
     expect(classifyScript(payToScriptHashScript(pkh))).toEqual({

@@ -100,6 +100,17 @@ export class Transaction {
         `tx: outpoint hash must be 32 bytes, got ${previousOutPoint.hash.length}`,
       );
     }
+    // dcrd types Tree as int8 and defines TxTreeUnknown = -1, but only Regular (0)
+    // and Stake (1) are consensus-valid, and the unsigned writer would otherwise
+    // reject anything else with a message about bytes rather than about the tree.
+    // Parsing stays permissive (fromBytes accepts any byte, as dcrd's decoder
+    // does); this is the construction path.
+    if (previousOutPoint.tree !== TxTree.Regular && previousOutPoint.tree !== TxTree.Stake) {
+      throw new Error(
+        `tx: outpoint tree must be ${TxTree.Regular} (regular) or ${TxTree.Stake} (stake), ` +
+          `got ${previousOutPoint.tree}`,
+      );
+    }
     this.inputs.push({
       previousOutPoint: {
         hash: copyOf(previousOutPoint.hash, 0, 32),

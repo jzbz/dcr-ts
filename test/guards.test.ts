@@ -3,7 +3,13 @@ import { ExtendedKey, MAX_EXTENDED_KEY_LENGTH } from "../src/hd.js";
 import { MAX_ADDRESS_LENGTH, decodeAddress, isValidAddress } from "../src/address.js";
 import { MAX_WIF_LENGTH, decodeWif } from "../src/wif.js";
 import { maxBase58Length } from "../src/base58.js";
-import { mnemonicToMasterKey, mnemonicToSeed } from "../src/bip39.js";
+import {
+  generateMnemonic,
+  mnemonicToMasterKey,
+  mnemonicToSeed,
+  validateMnemonic,
+} from "../src/bip39.js";
+import { wordlist as spanish } from "@scure/bip39/wordlists/spanish";
 import { networks } from "../src/networks.js";
 import {
   assertSignableSigHashType,
@@ -238,6 +244,22 @@ describe("mnemonicToMasterKey validates the phrase", () => {
 
   test("accepts a valid mnemonic", () => {
     expect(mnemonicToMasterKey(good, networks.mainnet).isPrivate).toBe(true);
+  });
+
+  test("accepts a non-English mnemonic against its own wordlist", () => {
+    // validateMnemonic only knows the list it is given, so gating on the English
+    // one would reject a perfectly valid Spanish or Japanese phrase. The seed
+    // itself does not depend on the wordlist at all.
+    const es = generateMnemonic(128, spanish);
+    expect(() => mnemonicToMasterKey(es, networks.mainnet)).toThrow(/invalid mnemonic/);
+    const key = mnemonicToMasterKey(es, networks.mainnet, "", spanish);
+    expect(key.isPrivate).toBe(true);
+    // Same key as the unchecked primitive: validation gates, it does not alter.
+    expect(key.toString()).toBe(
+      ExtendedKey.fromSeed(mnemonicToSeed(es), networks.mainnet).toString(),
+    );
+    expect(validateMnemonic(es, spanish)).toBe(true);
+    expect(validateMnemonic(es)).toBe(false);
   });
 
   test("rejects a bad checksum or an unknown word", () => {

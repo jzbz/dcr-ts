@@ -108,6 +108,8 @@ export {
   entropyToMnemonic,
   mnemonicToSeed,
   mnemonicToMasterKey,
+  englishWordlist,
+  type Wordlist,
 } from "./bip39.js";
 
 // Transactions

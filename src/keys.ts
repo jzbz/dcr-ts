@@ -55,6 +55,34 @@ export function assertCompressedPubKey(key: Uint8Array, who: string): void {
   }
 }
 
+/**
+ * Throw unless `key` is a serialized secp256k1 point — 33-byte compressed or
+ * 65-byte uncompressed.
+ *
+ * For hashing a key into a P2PKH address, where both serializations are
+ * legitimate and produce *different* addresses (dcrd hashes whichever form the
+ * caller holds; see `dcrutil/util.go`). Use {@link assertCompressedPubKey}
+ * wherever the format itself requires 33 bytes, such as the pay-to-pubkey address
+ * payload or a bare-P2PK script.
+ */
+export function assertPubKey(key: Uint8Array, who: string): void {
+  if (key.length !== 33 && key.length !== 65) {
+    throw new Error(
+      `${who}: public key must be 33 (compressed) or 65 (uncompressed) bytes, got ${key.length}`,
+    );
+  }
+  const prefix = key[0]!;
+  const ok = key.length === 33 ? prefix === 0x02 || prefix === 0x03 : prefix === 0x04;
+  if (!ok) {
+    throw new Error(
+      `${who}: public key has prefix 0x${prefix.toString(16).padStart(2, "0")}, which is not valid for a ${key.length}-byte key`,
+    );
+  }
+  if (!isValidPublicKey(key)) {
+    throw new Error(`${who}: public key is not a point on the secp256k1 curve`);
+  }
+}
+
 /** Big-endian 32-byte encoding of a scalar already reduced mod n. */
 export function scalarToBytes(x: bigint): Uint8Array {
   const out = new Uint8Array(32);
@@ -126,12 +154,3 @@ export function publicKeyTweakAddPoint(
   }
 }
 
-/**
- * BIP32 public child tweak: `point(IL) + KPar`, returned as a compressed key.
- * Returns `null` when invalid (IL >= n, or the result is the point at infinity).
- */
-export function publicKeyTweakAdd(kPar: Uint8Array, il: Uint8Array): Uint8Array | null {
-  const parent = parsePublicKeyPoint(kPar);
-  if (parent === null) return null;
-  return publicKeyTweakAddPoint(parent, il);
-}

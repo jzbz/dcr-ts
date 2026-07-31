@@ -60,7 +60,7 @@ const edPrivHex = "0ef02ca348c524e6392655ba4d29603cd1a7347d9d65cfe93ce1ebffdca22
 // A seed whose m/44' child private key has a leading zero byte. dcrd's
 // hdkeychain.Child strips that byte and carries the shortened key into the next
 // hardened HMAC, so this seed's m/44'/42' differs between Child (what dcrwallet
-// derives) and ChildBIP32Std (strict BIP32). Roughly 1 seed in 112 is affected
+// derives) and ChildBIP32Std (strict BIP32). Roughly 1 seed in 128 is affected
 // on a BIP44 path; without a vector like this one the difference is invisible,
 // because the leading-zero key's own dprv is identical either way.
 const leadingZeroSeedHex = "7b03a6c5e4032241607f9ebddcfb1a39587796b5d4f31231506f8eadcceb0a29"

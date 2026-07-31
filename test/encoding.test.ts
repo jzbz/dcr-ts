@@ -19,6 +19,7 @@ import {
   scriptHashAddress,
 } from "../src/address.js";
 import { isValidPublicKey } from "../src/keys.js";
+import { hash160 } from "../src/hash.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
 import { bytesToHex, hexToBytes, nonEmpty, vectors } from "./helpers.js";
 
@@ -171,29 +172,47 @@ describe("addresses", () => {
     // where the public key was meant type-checks, since both are Uint8Array.
     const priv = hexToBytes(vectors.keys.privHex);
     expect(priv.length, "32 vs 33 is the whole trap").toBe(32);
+    const offCurve = new Uint8Array(33);
+    offCurve[0] = 0x02;
+    offCurve.set(hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"), 1);
+
     for (const fn of [addressFromPubKey, pubKeyAddress]) {
-      expect(() => fn(priv, networks.mainnet), `${fn.name} privkey`).toThrow(
-        /33 compressed bytes/,
-      );
+      expect(() => fn(priv, networks.mainnet), `${fn.name} privkey`).toThrow(/public key must be/);
       expect(() => fn(new Uint8Array(0), networks.mainnet), `${fn.name} empty`).toThrow(
-        /33 compressed bytes/,
-      );
-      expect(() => fn(new Uint8Array(65), networks.mainnet), `${fn.name} uncompressed`).toThrow(
-        /33 compressed bytes/,
-      );
-      // Right length, wrong prefix.
-      const badPrefix = new Uint8Array(33);
-      badPrefix[0] = 0x04;
-      expect(() => fn(badPrefix, networks.mainnet), `${fn.name} prefix`).toThrow(/0x02 or 0x03/);
-      // Right length and prefix, not on the curve.
-      const offCurve = new Uint8Array(33);
-      offCurve[0] = 0x02;
-      offCurve.set(
-        hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
-        1,
+        /public key must be/,
       );
       expect(() => fn(offCurve, networks.mainnet), `${fn.name} off-curve`).toThrow(/curve/);
     }
+
+    // pubKeyAddress is compressed-only: its payload format is `sigType || X`,
+    // which has no room for an uncompressed key.
+    expect(() => pubKeyAddress(hexToBytes(vectors.keys.pubkeyUncompressed), networks.mainnet))
+      .toThrow(/33 compressed bytes/);
+    const badPrefix = new Uint8Array(33);
+    badPrefix[0] = 0x04;
+    expect(() => pubKeyAddress(badPrefix, networks.mainnet)).toThrow(/0x02 or 0x03/);
+  });
+
+  test("addressFromPubKey accepts both serializations, which hash differently", () => {
+    // Both are legitimate — dcrd hashes whichever form the caller holds — and they
+    // produce different addresses. Refusing the uncompressed form would orphan the
+    // only address a signatureScript(..., compressed = false) can ever satisfy.
+    const compressed = hexToBytes(vectors.keys.pubkeyCompressed);
+    const uncompressed = hexToBytes(vectors.keys.pubkeyUncompressed);
+    expect(compressed.length).toBe(33);
+    expect(uncompressed.length).toBe(65);
+    expect(uncompressed[0]).toBe(0x04);
+
+    const fromCompressed = addressFromPubKey(compressed, networks.mainnet);
+    const fromUncompressed = addressFromPubKey(uncompressed, networks.mainnet);
+    expect(fromCompressed).toBe(vectors.keys.addresses.mainnet!.p2pkh);
+    expect(fromUncompressed).not.toBe(fromCompressed);
+    // The uncompressed address is hash160 of the 65-byte serialization.
+    expect(fromUncompressed).toBe(pubKeyHashAddress(hash160(uncompressed), networks.mainnet));
+    // An uncompressed key that is not on the curve is still refused.
+    const bad = Uint8Array.from(uncompressed);
+    bad[1] = bad[1]! ^ 0xff;
+    expect(() => addressFromPubKey(bad, networks.mainnet)).toThrow(/curve/);
   });
 
   test("pubkey addresses encoding an invalid curve point are rejected", () => {

@@ -17,6 +17,15 @@
  * an already-parsed transaction or key.
  */
 export function copyOf(src: Uint8Array, off: number, n: number): Uint8Array {
+  // Validated because this is exported: `subarray` clamps, so an out-of-range
+  // read would silently return a short-then-zero-padded buffer rather than fail,
+  // and a negative offset would read from the wrong place.
+  if (!Number.isInteger(off) || !Number.isInteger(n) || off < 0 || n < 0) {
+    throw new Error(`copyOf: offset and length must be non-negative integers, got ${off}, ${n}`);
+  }
+  if (off + n > src.length) {
+    throw new Error(`copyOf: reading ${n} bytes at ${off} overruns a ${src.length}-byte source`);
+  }
   const out = new Uint8Array(n);
   out.set(src.subarray(off, off + n));
   return out;

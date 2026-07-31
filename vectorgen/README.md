@@ -35,7 +35,7 @@ guard against:
 - **`hd.leadingZero`** — dcrd's `hdkeychain.Child` strips leading zero bytes from
   a derived private key and carries the shortened key into the next hardened
   HMAC; `ChildBIP32Std` follows BIP32 strictly. Both are emitted. The difference
-  only shows below a key with a leading zero byte (~1 seed in 112 on a BIP44
+  only shows below a key with a leading zero byte (~1 seed in 128 on a BIP44
   path), and it is invisible in that key's own extended-key string because dcrd
   pads it back to 32 bytes — so only its hardened descendants diverge.
 - **`txNullWitness`** — built from `wire.NewTxIn` rather than an explicit

@@ -45,8 +45,11 @@ export function isSignableSigHashType(hashType: number): boolean {
 /** Throw unless `hashType` is one dcrd's engine accepts. */
 export function assertSignableSigHashType(hashType: number): void {
   if (!isSignableSigHashType(hashType)) {
+    const shown = Number.isInteger(hashType)
+      ? `0x${Number(hashType).toString(16)}`
+      : String(hashType);
     throw new Error(
-      `sighash: hash type 0x${Number(hashType).toString(16)} is not one dcrd accepts ` +
+      `sighash: hash type ${shown} is not one dcrd accepts ` +
         `(All/None/Single, optionally |AnyOneCanPay)`,
     );
   }
@@ -60,7 +63,13 @@ export function assertSignableSigHashType(hashType: number): void {
  * transaction's own prefix serialization — `SigHashSerializePrefix` and
  * `TxSerializeNoWitness` are both `1`, and the bodies are the same. So this is
  * exactly `tx.hash()`, and passing it to {@link calcSignatureHash} as
- * `cachedPrefix` turns signing an N-input transaction from O(N²) into O(N).
+ * `cachedPrefix` removes the dominant per-input cost when signing.
+ *
+ * It does **not** make signing linear. The witness half still walks every input
+ * on each call (one varint apiece), so signing N inputs stays O(N²) — but the
+ * prefix half is the expensive one, since it re-serializes every outpoint and
+ * every output script, so the constant drops by more than an order of magnitude.
+ * Measured on the hashing alone: 12x at 50 inputs, 26x at 500.
  *
  * This is what dcrd's `cachedPrefix` parameter exists for.
  */
