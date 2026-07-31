@@ -60,13 +60,17 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^3.2.7",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.10"
+    "vitest": "^3.2.7"
   },
   "bugs": {
     "url": "https://github.com/jzbz/dcr-ts/issues"
   },
-  "homepage": "https://github.com/jzbz/dcr-ts#readme"
+  "homepage": "https://github.com/jzbz/dcr-ts#readme",
+  "_overridesComment": "vitest 3.x accepts vite ^5||^6||^7, but vite 7 requires Node >=20.19 and would silently drop the Node 18 that engines promises. 6.x is the newest line supporting ^18.",
+  "overrides": {
+    "vite": "^6.3.6"
+  }
 }

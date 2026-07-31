@@ -194,11 +194,17 @@ affect you.
   SECURITY.md, CHANGELOG.md and the licence: 11 files.
 - Dropped the `lint` script, which was a byte-identical duplicate of `typecheck`
   that CI never ran. Added `npm run vectors` for regenerating the fixture.
-- Upgraded vitest to 4.x, which clears all 11 advisories its 2.x tree carried.
-  The blocking `npm audit` gate is scoped with `--omit=dev`: production
+- Upgraded vitest to 3.2.7 and pinned vite to 6.x, clearing the critical
+  advisories the old 2.x tree carried. Deliberately *not* vitest 4: it requires
+  Node `^20 || ^22 || >=24`, and vite 7 requires `>=20.19`, either of which would
+  quietly drop the Node 18 this package's `engines` field promises. 3.2.7 is above
+  the advisory range (`<=3.2.5`) and still supports `^18.0.0`, so the security fix
+  costs no supported runtime.
+- The blocking `npm audit` gate is scoped with `--omit=dev`. Production
   dependencies are what a consumer installs, and a CVE in the test runner never
   reaches them, so letting dev-tool advisories break a library's CI only trains
-  people to ignore it. The full audit still runs for visibility, without failing.
+  people to ignore the signal. Production dependencies audit clean; the full
+  audit still runs for visibility, without failing.
 - CI gains three jobs: coverage with thresholds, a package check that both module
   formats load and export the same symbols plus `npm pack --dry-run` and
   `npm audit`, and the fixture-drift check. The test matrix now includes Node 24.
