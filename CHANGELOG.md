@@ -158,6 +158,32 @@ affect you.
 - `hardened()`, `derive()`, `Writer.u8/u16/u32`, `Reader.bytes` and
   `calcSignatureHash` throw on input they previously coerced.
 
+### Added — typed errors
+
+- **Every throw is now a `DcrError` carrying a stable `code`.** Previously all 88
+  throw sites raised a bare `Error`, so the only way to tell a mistyped address
+  from a right-address-wrong-network paste was to match on prose — which is not
+  part of any API, breaks when a message is reworded, and cannot separate failures
+  that happen to share wording. The tests had exactly that problem, and 44 of
+  their assertions matched on message text.
+
+  ```ts
+  import { hasErrorCode } from "dcr-ts";
+
+  try {
+    addressToScript(pasted, mainnet);
+  } catch (e) {
+    if (hasErrorCode(e, "bad-checksum")) showTypoHelp();
+    else if (hasErrorCode(e, "wrong-network")) showWrongNetworkHelp();
+    else throw e;
+  }
+  ```
+
+  `decodeAddress` now distinguishes `wrong-network` from `unknown-prefix`, which
+  folding both into one prefix lookup had made impossible. Codes are the stable
+  contract; messages remain human-readable and name the operation that failed.
+  Exports `DcrError`, `DcrErrorCode`, `isDcrError` and `hasErrorCode`.
+
 ### Changed — packaging
 
 - `npm run coverage` works: `@vitest/coverage-v8` is now a devDependency, and
@@ -168,6 +194,11 @@ affect you.
   SECURITY.md, CHANGELOG.md and the licence: 11 files.
 - Dropped the `lint` script, which was a byte-identical duplicate of `typecheck`
   that CI never ran. Added `npm run vectors` for regenerating the fixture.
+- Upgraded vitest to 4.x, which clears all 11 advisories its 2.x tree carried.
+  The blocking `npm audit` gate is scoped with `--omit=dev`: production
+  dependencies are what a consumer installs, and a CVE in the test runner never
+  reaches them, so letting dev-tool advisories break a library's CI only trains
+  people to ignore it. The full audit still runs for visibility, without failing.
 - CI gains three jobs: coverage with thresholds, a package check that both module
   formats load and export the same symbols plus `npm pack --dry-run` and
   `npm audit`, and the fixture-drift check. The test matrix now includes Node 24.

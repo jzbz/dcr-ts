@@ -10,6 +10,7 @@
  * signature-hash serialization types (prefix = 1, witness = **3**), which are
  * fixed by consensus and differ from the wire serialization types.
  */
+import { err } from "./errors.js";
 import { blake256 } from "./hash.js";
 import { Writer } from "./bytes.js";
 import { scriptParses } from "./script.js";
@@ -48,9 +49,10 @@ export function assertSignableSigHashType(hashType: number): void {
     const shown = Number.isInteger(hashType)
       ? `0x${Number(hashType).toString(16)}`
       : String(hashType);
-    throw new Error(
-      `sighash: hash type ${shown} is not one dcrd accepts ` +
-        `(All/None/Single, optionally |AnyOneCanPay)`,
+    throw err(
+      "invalid-hash-type",
+      "sighash",
+      `hash type ${shown} is not one dcrd accepts (All/None/Single, optionally |AnyOneCanPay)`,
     );
   }
 }
@@ -108,13 +110,13 @@ export function calcSignatureHash(
   // truncated, so a verifier would recompute a different hash and the signature
   // could never verify. Reject rather than silently produce that.
   if (!Number.isInteger(hashType) || hashType < 0 || hashType > 0xff) {
-    throw new Error(`sighash: hash type must be a byte (0..255), got ${hashType}`);
+    throw err("invalid-hash-type", "sighash", `hash type must be a byte (0..255), got ${hashType}`);
   }
   // NaN and fractional indices slip past both comparisons below (every relational
   // test against NaN is false), leaving a hash that commits the subScript to no
   // input at all.
   if (!Number.isInteger(idx)) {
-    throw new Error(`sighash: input index must be an integer, got ${idx}`);
+    throw err("not-an-integer", "sighash", `input index must be an integer, got ${idx}`);
   }
 
   const masked = hashType & SIG_HASH_MASK;
@@ -124,16 +126,18 @@ export function calcSignatureHash(
   // signing against a script that does not tokenize yields a signature over a
   // message dcrd would refuse to compute, i.e. an unspendable input.
   if (!scriptParses(subScript)) {
-    throw new Error("sighash: subScript is not a well-formed script (malformed data push)");
+    throw err("malformed-script", "sighash", "subScript does not tokenize (malformed data push)");
   }
 
   if (masked === SigHashType.Single && idx >= tx.outputs.length) {
-    throw new Error(
-      `sighash: SigHashSingle input ${idx} has no corresponding output`,
+    throw err(
+      "out-of-range",
+      "sighash",
+      `SigHashSingle input ${idx} has no corresponding output`,
     );
   }
   if (idx < 0 || idx >= tx.inputs.length) {
-    throw new Error(`sighash: input index ${idx} out of range`);
+    throw err("out-of-range", "sighash", `input index ${idx} out of range`);
   }
 
   // Inputs committed to: only the signed input under AnyOneCanPay, else all.
@@ -149,7 +153,7 @@ export function calcSignatureHash(
   let prefixHash: Uint8Array;
   if (cachedPrefix !== undefined && prefixIsInputIndependent) {
     if (cachedPrefix.length !== 32) {
-      throw new Error(`sighash: cachedPrefix must be 32 bytes, got ${cachedPrefix.length}`);
+      throw err("bad-length", "sighash", `cachedPrefix must be 32 bytes, got ${cachedPrefix.length}`);
     }
     prefixHash = cachedPrefix;
   } else {

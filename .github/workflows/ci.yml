@@ -58,7 +58,15 @@ jobs:
           })'
       - name: Show what would be published
         run: npm pack --dry-run
-      - run: npm audit --audit-level=high
+      # Only production dependencies gate the build. Those are what a consumer of
+      # the published package actually installs; a CVE in the test runner or the
+      # bundler never reaches them, and letting dev-tool advisories break CI on a
+      # library trains people to ignore it. The full audit still runs, for
+      # visibility, without failing.
+      - name: Audit what consumers install
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit everything (informational)
+        run: npm audit || true
 
   # The test fixture is ground truth generated from dcrd itself, so it is only
   # worth anything if it still matches what dcrd produces. Regenerate it and

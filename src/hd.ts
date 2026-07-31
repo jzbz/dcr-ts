@@ -50,6 +50,7 @@
  *   Only hardened steps are affected, and in BIP44 the deepest hardened level is
  *   the account key, so this rarely shows up in practice.
  */
+import { err } from "./errors.js";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import { base58Decode, checkDecode, checkEncode, maxBase58Length } from "./base58.js";
@@ -89,7 +90,7 @@ export const MAX_EXTENDED_KEY_LENGTH = maxBase58Length(SERIALIZED_LENGTH + 4);
  */
 export function hardened(index: number): number {
   if (!Number.isInteger(index) || index < 0 || index >= HARDENED_OFFSET) {
-    throw new Error(`hd: hardened index must be an integer in 0..2^31-1, got ${index}`);
+    throw err(Number.isInteger(index) ? "out-of-range" : "not-an-integer", "hardened", `index must be an integer in 0..2^31-1, got ${index}`);
   }
   return (index + HARDENED_OFFSET) >>> 0;
 }
@@ -148,12 +149,12 @@ export class ExtendedKey {
   /** Derive a master key from a BIP32 seed (16–64 bytes). */
   static fromSeed(seed: Uint8Array, network: Network): ExtendedKey {
     if (seed.length < 16 || seed.length > 64) {
-      throw new Error("hd: seed must be 16..64 bytes");
+      throw err("out-of-range", "ExtendedKey.fromSeed", `seed must be 16..64 bytes, got ${seed.length}`);
     }
     const I = hmac(sha512, MASTER_HMAC_KEY, seed);
     const il = I.subarray(0, 32);
     const ir = I.subarray(32, 64);
-    if (!isValidPrivateKey(il)) throw new Error("hd: invalid master key (retry with new seed)");
+    if (!isValidPrivateKey(il)) throw err("invalid-private-key", "ExtendedKey.fromSeed", "seed produced an unusable master key; retry with a new seed");
     return new ExtendedKey(
       network,
       true,
@@ -173,7 +174,7 @@ export class ExtendedKey {
 
   /** The 32-byte private scalar. Throws for a public key. */
   privateKeyBytes(): Uint8Array {
-    if (!this.privateKey) throw new Error("hd: not a private key");
+    if (!this.privateKey) throw err("not-a-private-key", "ExtendedKey.privateKeyBytes", "this is a public (neutered) key");
     return this.privateKey.slice();
   }
 
@@ -248,16 +249,16 @@ export class ExtendedKey {
     // The serialized depth is a single byte, so refuse to go past what can be
     // round-tripped. (dcrd keeps depth as a uint16 and serializes depth%256, so
     // it will happily derive further and wrap; this is the stricter choice.)
-    if (this.depth >= 255) throw new Error("hd: cannot derive beyond depth 255");
-    if (!Number.isInteger(index)) throw new Error(`hd: index must be an integer, got ${index}`);
-    if (index < 0 || index > 0xffffffff) throw new Error(`hd: index ${index} out of range`);
+    if (this.depth >= 255) throw err("max-depth", "ExtendedKey.derive", "cannot derive beyond depth 255, which is all a single byte can serialize");
+    if (!Number.isInteger(index)) throw err("not-an-integer", "ExtendedKey.derive", `index must be an integer, got ${index}`);
+    if (index < 0 || index > 0xffffffff) throw err("out-of-range", "ExtendedKey.derive", `index ${index} is outside 0..2^32-1`);
     const idx = index >>> 0;
     const isHardened = idx >= HARDENED_OFFSET;
 
     const data = new Uint8Array(37);
     if (isHardened) {
       if (!this.privateKey) {
-        throw new Error("hd: cannot derive a hardened child from a public key");
+        throw err("hardened-from-public", "ExtendedKey.derive", "cannot derive a hardened child from a public key");
       }
       // dcrd zeroes a 37-byte buffer, copies the parent scalar in at offset 1
       // and writes ser32(index) at offset 33. In the Decred variant the stored
@@ -291,7 +292,7 @@ export class ExtendedKey {
 
     if (this.privateKey) {
       const childPriv = privateKeyTweakAdd(this.privateKey, il);
-      if (!childPriv) throw new Error("hd: invalid child key (retry with next index)");
+      if (!childPriv) throw err("invalid-child", "ExtendedKey.derive", "derived an invalid child key; retry with the next index");
       return new ExtendedKey(
         this.network,
         true,
@@ -309,11 +310,11 @@ export class ExtendedKey {
 
     if (this.cachedPoint === undefined) {
       const parsed = parsePublicKeyPoint(this.compressedPublicKey);
-      if (parsed === null) throw new Error("hd: public key is not a valid curve point");
+      if (parsed === null) throw err("invalid-public-key", "ExtendedKey.derive", "public key is not a valid curve point");
       this.cachedPoint = parsed;
     }
     const childPub = publicKeyTweakAddPoint(this.cachedPoint, il);
-    if (!childPub) throw new Error("hd: invalid child key (retry with next index)");
+    if (!childPub) throw err("invalid-child", "ExtendedKey.derive", "derived an invalid child key; retry with the next index");
     return new ExtendedKey(
       this.network,
       false,
@@ -356,11 +357,11 @@ export class ExtendedKey {
       const numStr = isH ? raw.slice(0, -1) : raw;
       // Strict decimal only — `Number()` would accept "0x10", "1e2", "", etc.
       if (!/^\d+$/.test(numStr)) {
-        throw new Error(`hd: invalid path element '${raw}'`);
+        throw err("invalid-path", "ExtendedKey.derivePath", `invalid path element '${raw}'`);
       }
       const n = Number(numStr);
       if (n >= HARDENED_OFFSET) {
-        throw new Error(`hd: path index ${n} out of range`);
+        throw err("invalid-path", "ExtendedKey.derivePath", `path index ${n} is at or above the hardened offset; write it as ${n - HARDENED_OFFSET}' instead`);
       }
       const idx = isH ? hardened(n) : n;
       key = strictBip32 ? key.deriveBip32Std(idx) : key.derive(idx);
@@ -420,8 +421,10 @@ export class ExtendedKey {
     // burns CPU proportional to its length squared. dcrd caps identically
     // (hdkeychain.NewKeyFromString's maxKeyLen).
     if (str.length > MAX_EXTENDED_KEY_LENGTH) {
-      throw new Error(
-        `hd: ${str.length} characters exceeds the ${MAX_EXTENDED_KEY_LENGTH}-character maximum`,
+      throw err(
+        "input-too-long",
+        "ExtendedKey.fromString",
+        `${str.length} characters exceeds the ${MAX_EXTENDED_KEY_LENGTH}-character maximum`,
       );
     }
     const data = checkDecode(str);
@@ -437,7 +440,7 @@ export class ExtendedKey {
    * key it just parsed. See {@link copyOf}.
    */
   static fromSerialized(data: Uint8Array): ExtendedKey {
-    if (data.length !== SERIALIZED_LENGTH) throw new Error("hd: bad serialized length");
+    if (data.length !== SERIALIZED_LENGTH) throw err("bad-length", "ExtendedKey.fromSerialized", `expected ${SERIALIZED_LENGTH} bytes, got ${data.length}`);
     const version: [number, number, number, number] = [data[0]!, data[1]!, data[2]!, data[3]!];
     const depth = data[4]!;
     const parentFingerprint = copyOf(data, 5, 4);
@@ -447,13 +450,13 @@ export class ExtendedKey {
     const keyData = copyOf(data, 45, 33);
 
     const found = matchVersion(version);
-    if (!found) throw new Error("hd: unknown extended-key version");
+    if (!found) throw err("unknown-version", "ExtendedKey.fromSerialized", `no network has the extended-key version 0x${version.map((b) => b.toString(16).padStart(2, "0")).join("")}`);
     const { network, isPrivate } = found;
 
     if (isPrivate) {
-      if (keyData[0] !== 0x00) throw new Error("hd: bad private key prefix");
+      if (keyData[0] !== 0x00) throw err("invalid-private-key", "ExtendedKey.fromSerialized", `a private key must be padded with a leading 0x00, got 0x${keyData[0]!.toString(16).padStart(2, "0")}`);
       const priv = copyOf(keyData, 1, 32);
-      if (!isValidPrivateKey(priv)) throw new Error("hd: invalid private key");
+      if (!isValidPrivateKey(priv)) throw err("invalid-private-key", "ExtendedKey.fromSerialized", "not a valid secp256k1 scalar");
       return new ExtendedKey(
         network,
         true,
@@ -466,10 +469,10 @@ export class ExtendedKey {
       );
     }
     if (keyData[0] !== 0x02 && keyData[0] !== 0x03) {
-      throw new Error("hd: bad public key prefix");
+      throw err("invalid-public-key", "ExtendedKey.fromSerialized", `a compressed public key must start with 0x02 or 0x03, got 0x${keyData[0]!.toString(16).padStart(2, "0")}`);
     }
     if (!isValidPublicKey(keyData)) {
-      throw new Error("hd: public key is not a valid curve point");
+      throw err("invalid-public-key", "ExtendedKey.fromSerialized", "public key is not a valid curve point");
     }
     return new ExtendedKey(
       network,

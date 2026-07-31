@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { DcrError, type DcrErrorCode } from "../src/errors.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -22,6 +23,24 @@ export function nonEmpty<T>(items: readonly T[], what: string): readonly T[] {
     throw new Error(`fixture: expected ${what} to be a non-empty array`);
   }
   return items;
+}
+
+/**
+ * Run `fn`, require it to throw a {@link DcrError}, and return the error's code.
+ *
+ * Assertions here used to match on message text (`toThrow(/bad checksum/)`),
+ * which is not part of any API: rewording a message broke tests, and distinct
+ * failures that happened to share wording were indistinguishable. Codes are the
+ * contract, so assert on those.
+ */
+export function errorCode(fn: () => unknown): DcrErrorCode {
+  try {
+    fn();
+  } catch (e) {
+    if (e instanceof DcrError) return e.code;
+    throw new Error(`expected a DcrError, got ${e instanceof Error ? e.name : typeof e}: ${e}`);
+  }
+  throw new Error("expected a throw, but the call returned normally");
 }
 
 export function hexToBytes(hex: string): Uint8Array {

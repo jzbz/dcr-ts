@@ -10,6 +10,7 @@
  *
  * Reference: "SHA-3 proposal BLAKE" (version 1.3), section 2.
  */
+import { err } from "./errors.js";
 
 // SHA-256 initialization vector (BLAKE-256 shares it).
 const IV = Uint32Array.of(
@@ -238,7 +239,7 @@ export class Blake256 {
   private finished = false;
 
   update(data: Uint8Array): this {
-    if (this.finished) throw new Error("Blake256: update after digest");
+    if (this.finished) throw err("invalid-argument", "Blake256", "update after digest");
     let i = 0;
     const n = data.length;
     this.total += n;
@@ -273,7 +274,7 @@ export class Blake256 {
   }
 
   digest(): Uint8Array {
-    if (this.finished) throw new Error("Blake256: digest called twice");
+    if (this.finished) throw err("invalid-argument", "Blake256", "digest called twice");
     this.finished = true;
 
     const rem = this.buflen;

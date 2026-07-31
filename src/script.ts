@@ -5,6 +5,7 @@
  * This is deliberately not a full script engine — it covers the templates a
  * wallet needs to build and recognise: P2PKH, P2SH and bare P2PK.
  */
+import { err } from "./errors.js";
 import { copyOf } from "./bytes.js";
 import { assertCompressedPubKey } from "./keys.js";
 
@@ -49,8 +50,10 @@ export const MAX_SCRIPT_ELEMENT_SIZE = 2048;
 export function pushData(data: Uint8Array): Uint8Array {
   const n = data.length;
   if (n > MAX_SCRIPT_ELEMENT_SIZE) {
-    throw new Error(
-      `pushData: ${n} bytes exceeds MaxScriptElementSize (${MAX_SCRIPT_ELEMENT_SIZE})`,
+    throw err(
+      "element-too-large",
+      "pushData",
+      `${n} bytes exceeds MaxScriptElementSize (${MAX_SCRIPT_ELEMENT_SIZE})`,
     );
   }
   // The single-byte cases dcrd requires a dedicated opcode for. Mirrors
@@ -124,7 +127,7 @@ export function scriptParses(script: Uint8Array): boolean {
 
 /** Build a P2PKH script: `OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG`. */
 export function payToPubKeyHashScript(hash160: Uint8Array): Uint8Array {
-  if (hash160.length !== 20) throw new Error("payToPubKeyHash: hash must be 20 bytes");
+  if (hash160.length !== 20) throw err("bad-length", "payToPubKeyHash", `hash must be 20 bytes, got ${hash160.length}`);
   // Preallocate and `set` rather than spreading through a JS number array, which
   // measured several times slower. Scripts are built once per output, so this is
   // on the hot path for any wallet assembling many transactions.
@@ -144,8 +147,8 @@ export function payToPubKeyHashScript(hash160: Uint8Array): Uint8Array {
  * <OP_1|OP_2> OP_CHECKSIGALT`. The signature type is pushed as a small integer.
  */
 export function payToPubKeyHashAltScript(hash160: Uint8Array, sigType: 1 | 2): Uint8Array {
-  if (hash160.length !== 20) throw new Error("payToPubKeyHashAlt: hash must be 20 bytes");
-  if (sigType !== 1 && sigType !== 2) throw new Error("payToPubKeyHashAlt: bad sigType");
+  if (hash160.length !== 20) throw err("bad-length", "payToPubKeyHashAlt", `hash must be 20 bytes, got ${hash160.length}`);
+  if (sigType !== 1 && sigType !== 2) throw err("unsupported-signature-type", "payToPubKeyHashAlt", `sigType must be 1 or 2, got ${sigType}`);
   const out = new Uint8Array(26);
   out[0] = OP.DUP;
   out[1] = OP.HASH160;
@@ -159,7 +162,7 @@ export function payToPubKeyHashAltScript(hash160: Uint8Array, sigType: 1 | 2): U
 
 /** Build a P2SH script: `OP_HASH160 <20-byte hash> OP_EQUAL`. */
 export function payToScriptHashScript(hash160: Uint8Array): Uint8Array {
-  if (hash160.length !== 20) throw new Error("payToScriptHash: hash must be 20 bytes");
+  if (hash160.length !== 20) throw err("bad-length", "payToScriptHash", `hash must be 20 bytes, got ${hash160.length}`);
   const out = new Uint8Array(23);
   out[0] = OP.HASH160;
   out[1] = OP.DATA_20;
@@ -198,7 +201,11 @@ export function payToPubKeyScript(compressedPubKey: Uint8Array): Uint8Array {
 export function payToPubKeyAltScript(pubKey: Uint8Array, sigType: 1 | 2): Uint8Array {
   if (sigType === 1) {
     if (pubKey.length !== 32) {
-      throw new Error(`payToPubKeyAlt: an Ed25519 public key must be 32 bytes, got ${pubKey.length}`);
+      throw err(
+        "invalid-public-key",
+        "payToPubKeyAlt",
+        `an Ed25519 public key must be 32 bytes, got ${pubKey.length}`,
+      );
     }
     const out = new Uint8Array(35);
     out[0] = OP.DATA_32;
@@ -207,7 +214,7 @@ export function payToPubKeyAltScript(pubKey: Uint8Array, sigType: 1 | 2): Uint8A
     out[34] = OP.CHECKSIGALT;
     return out;
   }
-  if (sigType !== 2) throw new Error("payToPubKeyAlt: bad sigType");
+  if (sigType !== 2) throw err("unsupported-signature-type", "payToPubKeyAlt", `sigType must be 1 or 2, got ${sigType}`);
   assertCompressedPubKey(pubKey, "payToPubKeyAlt");
   const out = new Uint8Array(36);
   out[0] = OP.DATA_33;

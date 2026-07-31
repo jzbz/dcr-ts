@@ -6,6 +6,7 @@
  * leading signature-type byte selecting the key's signature suite. The layout
  * is `base58check(privateKeyId[2] || sigType[1] || privKey[32])`.
  */
+import { err } from "./errors.js";
 import { base58Decode, base58Encode, maxBase58Length } from "./base58.js";
 import { blake256 } from "./hash.js";
 import type { Network } from "./networks.js";
@@ -36,7 +37,7 @@ export function encodeWif(
   network: Network,
   signatureType: SignatureType = SignatureType.Ecdsa,
 ): string {
-  if (privateKey.length !== 32) throw new Error("encodeWif: private key must be 32 bytes");
+  if (privateKey.length !== 32) throw err("bad-length", "encodeWif", `private key must be 32 bytes, got ${privateKey.length}`);
   const payload = new Uint8Array(3 + 32);
   payload[0] = network.privateKeyId[0];
   payload[1] = network.privateKeyId[1];
@@ -57,17 +58,19 @@ export const MAX_WIF_LENGTH = maxBase58Length(39);
 export function decodeWif(wif: string): DecodedWif {
   // Bound before decoding; base58 decoding is quadratic. See maxBase58Length.
   if (wif.length > MAX_WIF_LENGTH) {
-    throw new Error(
-      `decodeWif: ${wif.length} characters exceeds the ${MAX_WIF_LENGTH}-character maximum`,
+    throw err(
+      "input-too-long",
+      "decodeWif",
+      `${wif.length} characters exceeds the ${MAX_WIF_LENGTH}-character maximum`,
     );
   }
   const full = base58Decode(wif);
-  if (full.length !== 39) throw new Error("decodeWif: bad length");
+  if (full.length !== 39) throw err("bad-length", "decodeWif", `decoded to ${full.length} bytes, expected 39`);
   const data = full.subarray(0, 35);
   const checksum = full.subarray(35);
   const expected = wifChecksum(data);
   for (let i = 0; i < 4; i++) {
-    if (checksum[i] !== expected[i]) throw new Error("decodeWif: bad checksum");
+    if (checksum[i] !== expected[i]) throw err("bad-checksum", "decodeWif", "checksum does not match");
   }
   const prefix: [number, number] = [data[0]!, data[1]!];
   const signatureType = data[2]! as SignatureType;
@@ -76,9 +79,9 @@ export function decodeWif(wif: string): DecodedWif {
   const network = Object.values(networks).find(
     (n) => n.privateKeyId[0] === prefix[0] && n.privateKeyId[1] === prefix[1],
   );
-  if (!network) throw new Error("decodeWif: unknown network prefix");
+  if (!network) throw err("unknown-prefix", "decodeWif", `no network has the private-key prefix 0x${prefix[0]!.toString(16).padStart(2, "0")}${prefix[1]!.toString(16).padStart(2, "0")}`);
   if (SignatureType[signatureType] === undefined) {
-    throw new Error(`decodeWif: unknown signature type ${signatureType}`);
+    throw err("unsupported-signature-type", "decodeWif", `unknown signature type ${signatureType}`);
   }
   return { privateKey, network, signatureType };
 }

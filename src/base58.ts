@@ -7,6 +7,7 @@
  * for humans on Decred — addresses, WIF private keys and `dprv`/`dpub` extended
  * keys — rides on {@link checkEncode}.
  */
+import { err } from "./errors.js";
 import { hash256 } from "./hash.js";
 
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -66,7 +67,7 @@ export function base58Decode(str: string): Uint8Array {
   for (let i = 0; i < str.length; i++) {
     const code = str.charCodeAt(i);
     const val = code < 128 ? INDEX[code]! : 255;
-    if (val === 255) throw new Error(`invalid base58 character '${str[i]}'`);
+    if (val === 255) throw err("invalid-base58", "base58Decode", `invalid character '${str[i]}' at index ${i}`);
     num = num * BASE + BigInt(val);
   }
 
@@ -98,12 +99,12 @@ export function checkEncode(data: Uint8Array): string {
  */
 export function checkDecode(str: string): Uint8Array {
   const full = base58Decode(str);
-  if (full.length < 4) throw new Error("base58check: too short");
+  if (full.length < 4) throw err("bad-length", "base58check", "input is shorter than the 4-byte checksum");
   const data = full.subarray(0, full.length - 4);
   const checksum = full.subarray(full.length - 4);
   const expected = hash256(data).subarray(0, 4);
   for (let i = 0; i < 4; i++) {
-    if (checksum[i] !== expected[i]) throw new Error("base58check: bad checksum");
+    if (checksum[i] !== expected[i]) throw err("bad-checksum", "base58check", "checksum does not match");
   }
   return data.slice();
 }

@@ -5,6 +5,7 @@
  * module only adapts it to the shapes the rest of the library needs (compressed
  * keys, scalar/point arithmetic for BIP32 derivation).
  */
+import { err } from "./errors.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { ed25519 } from "@noble/curves/ed25519";
 
@@ -62,15 +63,17 @@ export function isValidEd25519PublicKey(key: Uint8Array): boolean {
  */
 export function assertCompressedPubKey(key: Uint8Array, who: string): void {
   if (key.length !== 33) {
-    throw new Error(`${who}: public key must be 33 compressed bytes, got ${key.length}`);
+    throw err("invalid-public-key", who, `public key must be 33 compressed bytes, got ${key.length}`);
   }
   if (key[0] !== 0x02 && key[0] !== 0x03) {
-    throw new Error(
-      `${who}: public key must start with 0x02 or 0x03, got 0x${key[0]!.toString(16).padStart(2, "0")}`,
+    throw err(
+      "invalid-public-key",
+      who,
+      `public key must start with 0x02 or 0x03, got 0x${key[0]!.toString(16).padStart(2, "0")}`,
     );
   }
   if (!isValidPublicKey(key)) {
-    throw new Error(`${who}: public key is not a point on the secp256k1 curve`);
+    throw err("invalid-public-key", who, "public key is not a point on the secp256k1 curve");
   }
 }
 
@@ -86,19 +89,24 @@ export function assertCompressedPubKey(key: Uint8Array, who: string): void {
  */
 export function assertPubKey(key: Uint8Array, who: string): void {
   if (key.length !== 33 && key.length !== 65) {
-    throw new Error(
-      `${who}: public key must be 33 (compressed) or 65 (uncompressed) bytes, got ${key.length}`,
+    throw err(
+      "invalid-public-key",
+      who,
+      `public key must be 33 (compressed) or 65 (uncompressed) bytes, got ${key.length}`,
     );
   }
   const prefix = key[0]!;
   const ok = key.length === 33 ? prefix === 0x02 || prefix === 0x03 : prefix === 0x04;
   if (!ok) {
-    throw new Error(
-      `${who}: public key has prefix 0x${prefix.toString(16).padStart(2, "0")}, which is not valid for a ${key.length}-byte key`,
+    throw err(
+      "invalid-public-key",
+      who,
+      `public key has prefix 0x${prefix.toString(16).padStart(2, "0")}, which is not valid ` +
+        `for a ${key.length}-byte key`,
     );
   }
   if (!isValidPublicKey(key)) {
-    throw new Error(`${who}: public key is not a point on the secp256k1 curve`);
+    throw err("invalid-public-key", who, "public key is not a point on the secp256k1 curve");
   }
 }
 

@@ -4,7 +4,7 @@ import { networks } from "../src/networks.js";
 import { Reader } from "../src/bytes.js";
 import { payToPubKeyHashScript } from "../src/script.js";
 import { outPointFromTxid, Transaction } from "../src/tx.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 /**
  * Node's `Buffer` is a `Uint8Array` subclass that overrides `slice()` to return a
@@ -93,9 +93,8 @@ describe("parsed values never alias a caller's Buffer", () => {
     // width by calcSignatureHash.
     const tx = new Transaction();
     for (const n of [0, 31, 33]) {
-      expect(() => tx.addInput({ hash: new Uint8Array(n), index: 0, tree: 0 }), `${n}`).toThrow(
-        /32 bytes/,
-      );
+      expect(errorCode(() => tx.addInput({ hash: new Uint8Array(n), index: 0, tree: 0 })), `${n}`)
+        .toBe("bad-length");
     }
     expect(() => tx.addInput(outPointFromTxid("11".repeat(32), 0))).not.toThrow();
   });
@@ -141,7 +140,9 @@ describe("parsed values never alias a caller's Buffer", () => {
     // rewound the offset.
     for (const n of [-1, -32, 1.5, NaN]) {
       const r = new Reader(Buffer.from("deadbeef", "hex"));
-      expect(() => r.bytes(n), `${n}`).toThrow(/bad length/);
+      expect(errorCode(() => r.bytes(n)), `${n}`).toBe(
+        Number.isInteger(n) ? "out-of-range" : "not-an-integer",
+      );
       expect(r.offset, "offset untouched").toBe(0);
     }
   });

@@ -19,7 +19,7 @@ import {
 } from "../src/sign.js";
 import { payToPubKeyHashScript } from "../src/script.js";
 import { publicKeyFromPrivate } from "../src/keys.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 // Rebuild the exact transaction the dcrd generator serialized, so every byte
 // (serialization, txid, sighash, signature script) can be compared directly.
@@ -120,22 +120,22 @@ describe("transaction wire format", () => {
     // Direct Reader checks at each discriminant boundary.
     expect(new Reader(hexToBytes("fc")).varInt()).toBe(0xfc);
     expect(new Reader(hexToBytes("fdfd00")).varInt()).toBe(0xfd);
-    expect(() => new Reader(hexToBytes("fd0100")).varInt()).toThrow(/non-canonical/);
+    expect(errorCode(() => new Reader(hexToBytes("fd0100")).varInt())).toBe("non-canonical-varint");
     expect(new Reader(hexToBytes("fe00000100")).varInt()).toBe(0x10000);
-    expect(() => new Reader(hexToBytes("feffff0000")).varInt()).toThrow(/non-canonical/);
+    expect(errorCode(() => new Reader(hexToBytes("feffff0000")).varInt())).toBe("non-canonical-varint");
     expect(new Reader(hexToBytes("ff0000000001000000")).varInt()).toBe(0x100000000);
-    expect(() => new Reader(hexToBytes("ffffffffff00000000")).varInt()).toThrow(/non-canonical/);
+    expect(errorCode(() => new Reader(hexToBytes("ffffffffff00000000")).varInt())).toBe("non-canonical-varint");
 
     // A transaction whose input count is re-encoded non-canonically must not
     // parse: it would hash to a different txid than its own bytes.
     const canonical = vectors.tx.serialized;
     const mutated = canonical.slice(0, 8) + "fd0100" + canonical.slice(10);
-    expect(() => Transaction.fromBytes(hexToBytes(mutated))).toThrow(/non-canonical/);
+    expect(errorCode(() => Transaction.fromBytes(hexToBytes(mutated)))).toBe("non-canonical-varint");
   });
 
   test("outPointFromTxid validates its input", () => {
-    expect(() => outPointFromTxid("zz".repeat(32), 0)).toThrow(/hex/);
-    expect(() => outPointFromTxid("ab", 0)).toThrow(/hex/);
+    expect(errorCode(() => outPointFromTxid("zz".repeat(32), 0))).toBe("invalid-argument");
+    expect(errorCode(() => outPointFromTxid("ab", 0))).toBe("invalid-argument");
     const op = outPointFromTxid("00".repeat(31) + "ff", 3);
     // Display order is reversed into internal order.
     expect(op.hash[0]).toBe(0xff);
@@ -353,9 +353,11 @@ describe("cached prefix hash (the O(N^2) -> O(N) signing path)", () => {
 
   test("signP2PKHInputs still rejects a hash type dcrd would not accept", () => {
     const priv = hexToBytes(vectors.keys.privHex);
-    expect(() =>
-      signP2PKHInputs(nInOut(2), [{ idx: 0, subScript: outScript, privateKey: priv }], 0x04),
-    ).toThrow(/not one dcrd accepts/);
+    expect(
+      errorCode(() =>
+        signP2PKHInputs(nInOut(2), [{ idx: 0, subScript: outScript, privateKey: priv }], 0x04),
+      ),
+    ).toBe("invalid-hash-type");
   });
 });
 

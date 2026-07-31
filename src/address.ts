@@ -13,6 +13,7 @@
  * - pay-to-pubkey-hash (Ed25519 and secp256k1 Schnorr) — recognised on decode
  * - pay-to-pubkey (secp256k1 ECDSA) — the `Dk…` full-pubkey address
  */
+import { err } from "./errors.js";
 import { base58Decode, checkDecode, checkEncode, maxBase58Length } from "./base58.js";
 import { hash160 } from "./hash.js";
 import type { Network } from "./networks.js";
@@ -114,25 +115,25 @@ function encode(prefix: readonly [number, number], payload: Uint8Array): string 
 
 /** Encode a 20-byte pubkey hash as a P2PKH (secp256k1 ECDSA) address. */
 export function pubKeyHashAddress(hash: Uint8Array, network: Network): string {
-  if (hash.length !== 20) throw new Error("pubKeyHashAddress: hash must be 20 bytes");
+  if (hash.length !== 20) throw err("bad-length", "pubKeyHashAddress", `hash must be 20 bytes, got ${hash.length}`);
   return encode(network.pubKeyHashAddrId, hash);
 }
 
 /** Encode a 20-byte script hash as a P2SH address. */
 export function scriptHashAddress(hash: Uint8Array, network: Network): string {
-  if (hash.length !== 20) throw new Error("scriptHashAddress: hash must be 20 bytes");
+  if (hash.length !== 20) throw err("bad-length", "scriptHashAddress", `hash must be 20 bytes, got ${hash.length}`);
   return encode(network.scriptHashAddrId, hash);
 }
 
 /** Encode a 20-byte pubkey hash as a P2PKH (Ed25519) address. */
 export function pubKeyHashEd25519Address(hash: Uint8Array, network: Network): string {
-  if (hash.length !== 20) throw new Error("pubKeyHashEd25519Address: hash must be 20 bytes");
+  if (hash.length !== 20) throw err("bad-length", "pubKeyHashEd25519Address", `hash must be 20 bytes, got ${hash.length}`);
   return encode(network.pubKeyHashEdwardsAddrId, hash);
 }
 
 /** Encode a 20-byte pubkey hash as a P2PKH (secp256k1 Schnorr) address. */
 export function pubKeyHashSchnorrAddress(hash: Uint8Array, network: Network): string {
-  if (hash.length !== 20) throw new Error("pubKeyHashSchnorrAddress: hash must be 20 bytes");
+  if (hash.length !== 20) throw err("bad-length", "pubKeyHashSchnorrAddress", `hash must be 20 bytes, got ${hash.length}`);
   return encode(network.pubKeyHashSchnorrAddrId, hash);
 }
 
@@ -166,20 +167,20 @@ function decodePubKeyData(data: Uint8Array): { kind: PubKeyAddressKind; pubKey: 
     // The payload *is* the Ed25519 key; there is no oddness bit to apply.
     const pubKey = copyOf(data, 1, 32);
     if (!isValidEd25519PublicKey(pubKey)) {
-      throw new Error("decodeAddress: pubkey is not a valid Ed25519 curve point");
+      throw err("invalid-public-key", "decodeAddress", "pubkey is not a valid Ed25519 curve point");
     }
     return { kind: "pubkey-ed25519", pubKey };
   }
 
   if (sigType !== SignatureTypeEcdsa && sigType !== SignatureTypeSchnorr) {
-    throw new Error(`decodeAddress: unsupported pubkey signature type ${sigType}`);
+    throw err("unsupported-signature-type", "decodeAddress", `unsupported pubkey signature type ${sigType}`);
   }
   // secp256k1: rebuild the compressed serialization from X plus the oddness bit.
   const pubKey = new Uint8Array(33);
   pubKey[0] = odd ? 0x03 : 0x02;
   pubKey.set(data.subarray(1), 1);
   if (!isValidPublicKey(pubKey)) {
-    throw new Error("decodeAddress: pubkey is not a valid curve point");
+    throw err("invalid-public-key", "decodeAddress", "pubkey is not a valid curve point");
   }
   return { kind: sigType === SignatureTypeEcdsa ? "pubkey-ecdsa" : "pubkey-schnorr", pubKey };
 }
@@ -197,10 +198,10 @@ export function pubKeyAddress(compressedPubKey: Uint8Array, network: Network): s
 /** Encode a 32-byte Ed25519 public key as a pay-to-pubkey address. */
 export function pubKeyEd25519Address(pubKey: Uint8Array, network: Network): string {
   if (pubKey.length !== 32) {
-    throw new Error(`pubKeyEd25519Address: an Ed25519 public key must be 32 bytes, got ${pubKey.length}`);
+    throw err("invalid-public-key", "pubKeyEd25519Address", `an Ed25519 public key must be 32 bytes, got ${pubKey.length}`);
   }
   if (!isValidEd25519PublicKey(pubKey)) {
-    throw new Error("pubKeyEd25519Address: public key is not a valid Ed25519 curve point");
+    throw err("invalid-public-key", "pubKeyEd25519Address", "public key is not a valid Ed25519 curve point");
   }
   const data = new Uint8Array(33);
   data[0] = SignatureTypeEd25519;
@@ -253,12 +254,14 @@ export function decodeAddress(address: string, network?: Network): DecodedAddres
   // (stdaddr.DecodeAddressV0's maxV0AddrLen): the largest version-0 address holds
   // a 33-byte payload plus a 2-byte prefix and a 4-byte checksum.
   if (address.length > MAX_ADDRESS_LENGTH) {
-    throw new Error(
-      `decodeAddress: ${address.length} characters exceeds the ${MAX_ADDRESS_LENGTH}-character maximum`,
+    throw err(
+      "input-too-long",
+      "decodeAddress",
+      `${address.length} characters exceeds the ${MAX_ADDRESS_LENGTH}-character maximum`,
     );
   }
   const data = checkDecode(address); // throws on bad checksum
-  if (data.length < 3) throw new Error("decodeAddress: too short");
+  if (data.length < 3) throw err("bad-length", "decodeAddress", `payload is ${data.length} bytes, too short to hold a prefix and data`);
   const prefix: [number, number] = [data[0]!, data[1]!];
   const payload = data.subarray(2);
 
@@ -269,21 +272,33 @@ export function decodeAddress(address: string, network?: Network): DecodedAddres
       (!network || e.network === network),
   );
   if (!match) {
-    throw new Error(
-      `decodeAddress: unknown address prefix 0x${prefix[0]!.toString(16)}${prefix[1]!
-        .toString(16)
-        .padStart(2, "0")}`,
-    );
+    // Distinguish "this is not an address at all" from "this is a valid address
+    // for a different network", which a UI needs to say different things about,
+    // and which folding both into one lookup previously made impossible.
+    const hex = `0x${prefix[0]!.toString(16).padStart(2, "0")}${prefix[1]!
+      .toString(16)
+      .padStart(2, "0")}`;
+    const onAnotherNetwork =
+      network && PREFIXES.find((e) => e.prefix[0] === prefix[0] && e.prefix[1] === prefix[1]);
+    if (onAnotherNetwork) {
+      throw err(
+        "wrong-network",
+        "decodeAddress",
+        `address is a ${onAnotherNetwork.kind} address for ${onAnotherNetwork.network.name}, ` +
+          `not ${network.name}`,
+      );
+    }
+    throw err("unknown-prefix", "decodeAddress", `unknown address prefix ${hex}`);
   }
 
   if (match.kind === "pubkey-ecdsa") {
     // One address ID covers all three signature suites; the payload's first byte
     // says which, so the concrete kind comes from decoding rather than the prefix.
-    if (payload.length !== 33) throw new Error("decodeAddress: bad pubkey length");
+    if (payload.length !== 33) throw err("bad-length", "decodeAddress", `pay-to-pubkey payload must be 33 bytes, got ${payload.length}`);
     const { kind, pubKey } = decodePubKeyData(payload);
     return { network: match.network, kind, pubKey, address };
   }
-  if (payload.length !== 20) throw new Error("decodeAddress: bad hash length");
+  if (payload.length !== 20) throw err("bad-length", "decodeAddress", `hash payload must be 20 bytes, got ${payload.length}`);
   return {
     network: match.network,
     kind: match.kind as HashAddressKind,
@@ -319,7 +334,11 @@ export function addressToScript(address: string, network: Network): Uint8Array {
   // stale `.d.ts`) can still pass nothing, and silently falling back to
   // network-agnostic decoding is the exact failure this parameter exists to stop.
   if (!network || typeof network.name !== "string") {
-    throw new Error("addressToScript: a network is required (pass mainnet, testnet3, simnet or regnet)");
+    throw err(
+      "invalid-argument",
+      "addressToScript",
+      "a network is required (pass mainnet, testnet3, simnet or regnet)",
+    );
   }
   const d = decodeAddress(address, network);
   switch (d.kind) {

@@ -11,6 +11,8 @@ import {
 } from "../src/bip39.js";
 import { wordlist as spanish } from "@scure/bip39/wordlists/spanish";
 import { networks } from "../src/networks.js";
+import { addressToScript, pubKeyHashAddress } from "../src/address.js";
+import { DcrError, hasErrorCode, isDcrError } from "../src/errors.js";
 import {
   assertSignableSigHashType,
   calcSignatureHash,
@@ -21,7 +23,7 @@ import { rawTxInSignature, signHash, signP2PKHInput, verifyHash } from "../src/s
 import { payToPubKeyHashScript, scriptParses } from "../src/script.js";
 import { publicKeyFromPrivate } from "../src/keys.js";
 import { Transaction, TxTree } from "../src/tx.js";
-import { hexToBytes, vectors } from "./helpers.js";
+import { hexToBytes, vectors, errorCode } from "./helpers.js";
 
 const priv = hexToBytes(vectors.keys.privHex);
 const pkh = hexToBytes(vectors.keys.pubkeyHash160);
@@ -92,10 +94,9 @@ describe("signature hash guards", () => {
     // hashing one of these would produce a signature over a message dcrd would
     // never compute — an unspendable input.
     for (const bad of ["76a914aabb", "4c", "21", "4effffffff"]) {
-      expect(() =>
-        calcSignatureHash(hexToBytes(bad), SigHashType.All, oneInputTx(), 0),
+      expect(errorCode(() => calcSignatureHash(hexToBytes(bad), SigHashType.All, oneInputTx(), 0)),
         bad,
-      ).toThrow(/well-formed script/);
+      ).toBe("malformed-script");
     }
   });
 
@@ -105,8 +106,8 @@ describe("signature hash guards", () => {
     // 0x01: the verifier recomputes a different hash and the signature can never
     // verify. dcrd's SigHashType is a byte, so this is unrepresentable there.
     for (const bad of [0x100, 0x101, 0x10001, -1, 1.5, NaN, Infinity]) {
-      expect(() => calcSignatureHash(subScript, bad, oneInputTx(), 0), `${bad}`).toThrow(
-        /must be a byte/,
+      expect(errorCode(() => calcSignatureHash(subScript, bad, oneInputTx(), 0)), `${bad}`).toBe(
+        "invalid-hash-type",
       );
     }
     // Undefined-but-byte-sized types still hash, matching dcrd, and are pinned
@@ -120,12 +121,16 @@ describe("signature hash guards", () => {
     // NaN slipped past both range checks, since every relational test against NaN
     // is false, leaving a hash that committed the subScript to no input at all.
     for (const bad of [NaN, 1.5, Infinity, -Infinity]) {
-      expect(() => calcSignatureHash(subScript, SigHashType.All, oneInputTx(), bad), `${bad}`)
-        .toThrow(/must be an integer/);
+      expect(
+        errorCode(() => calcSignatureHash(subScript, SigHashType.All, oneInputTx(), bad)),
+        `${bad}`,
+      ).toBe("not-an-integer");
     }
     for (const bad of [-1, 1, 99]) {
-      expect(() => calcSignatureHash(subScript, SigHashType.All, oneInputTx(), bad), `${bad}`)
-        .toThrow(/out of range/);
+      expect(
+        errorCode(() => calcSignatureHash(subScript, SigHashType.All, oneInputTx(), bad)),
+        `${bad}`,
+      ).toBe("out-of-range");
     }
   });
 
@@ -135,7 +140,7 @@ describe("signature hash guards", () => {
     for (const ht of good) expect(isSignableSigHashType(ht), `0x${ht.toString(16)}`).toBe(true);
     for (const ht of [0x00, 0x04, 0x05, 0x1f, 0x80, 0x84, 0xff, 0x100, -1, 1.5, NaN]) {
       expect(isSignableSigHashType(ht), `0x${Number(ht).toString(16)}`).toBe(false);
-      expect(() => assertSignableSigHashType(ht)).toThrow(/not one dcrd accepts/);
+      expect(errorCode(() => assertSignableSigHashType(ht))).toBe("invalid-hash-type");
     }
     // AnyOneCanPay alone is exported but invalid on its own.
     expect(isSignableSigHashType(SigHashType.AnyOneCanPay)).toBe(false);
@@ -145,10 +150,12 @@ describe("signature hash guards", () => {
         .not.toThrow();
     }
     for (const ht of [0x00, 0x04, 0x80, 0xff]) {
-      expect(() => rawTxInSignature(oneInputTx(), 0, subScript, ht, priv), `sign 0x${ht.toString(16)}`)
-        .toThrow(/not one dcrd accepts/);
-      expect(() => signP2PKHInput(oneInputTx(), 0, subScript, priv, ht)).toThrow(
-        /not one dcrd accepts/,
+      expect(
+        errorCode(() => rawTxInSignature(oneInputTx(), 0, subScript, ht, priv)),
+        `sign 0x${ht.toString(16)}`,
+      ).toBe("invalid-hash-type");
+      expect(errorCode(() => signP2PKHInput(oneInputTx(), 0, subScript, priv, ht))).toBe(
+        "invalid-hash-type",
       );
     }
   });
@@ -216,7 +223,7 @@ describe("base58 decoders bound their input", () => {
       ["ExtendedKey.fromString", () => ExtendedKey.fromString(huge)],
     ] as const) {
       const started = process.hrtime.bigint();
-      expect(fn, what).toThrow(/exceeds the/);
+      expect(errorCode(fn), what).toBe("input-too-long");
       const ms = Number(process.hrtime.bigint() - started) / 1e6;
       // Before the cap this took ~6 s for a 128 KB string and grew quadratically.
       expect(ms, `${what} took ${ms.toFixed(1)}ms`).toBeLessThan(50);
@@ -251,7 +258,7 @@ describe("mnemonicToMasterKey validates the phrase", () => {
     // one would reject a perfectly valid Spanish or Japanese phrase. The seed
     // itself does not depend on the wordlist at all.
     const es = generateMnemonic(128, spanish);
-    expect(() => mnemonicToMasterKey(es, networks.mainnet)).toThrow(/invalid mnemonic/);
+    expect(errorCode(() => mnemonicToMasterKey(es, networks.mainnet))).toBe("invalid-mnemonic");
     const key = mnemonicToMasterKey(es, networks.mainnet, "", spanish);
     expect(key.isPrivate).toBe(true);
     // Same key as the unchecked primitive: validation gates, it does not alter.
@@ -269,11 +276,62 @@ describe("mnemonicToMasterKey validates the phrase", () => {
     const badChecksum = good.replace(/yellow$/, "zoo");
     const notAWord = good.replace(/^legal/, "zzzzzz");
     for (const bad of [badChecksum, notAWord, "", "legal winner"]) {
-      expect(() => mnemonicToMasterKey(bad, networks.mainnet), JSON.stringify(bad)).toThrow(
-        /invalid mnemonic/,
-      );
+      expect(errorCode(() => mnemonicToMasterKey(bad, networks.mainnet)), JSON.stringify(bad))
+        .toBe("invalid-mnemonic");
     }
     // The unchecked primitive is still available for callers who want it.
     expect(mnemonicToSeed(badChecksum).length).toBe(64);
+  });
+});
+
+describe("typed errors", () => {
+  // The motivating case: a wallet UI needs different copy for a mistyped address
+  // than for a right-address-wrong-network paste. Message matching could not tell
+  // them apart, and matching on prose is not an API in the first place.
+  test("distinguish the failures a caller must react to differently", () => {
+    const hash = hexToBytes(vectors.keys.pubkeyHash160);
+    const onTestnet = pubKeyHashAddress(hash, networks.testnet3);
+    const mainnetAddr = pubKeyHashAddress(hash, networks.mainnet);
+    const typo = mainnetAddr.slice(0, -1) + (mainnetAddr.endsWith("X") ? "Y" : "X");
+
+    expect(errorCode(() => addressToScript(onTestnet, networks.mainnet))).toBe("wrong-network");
+    expect(errorCode(() => addressToScript(typo, networks.mainnet))).toBe("bad-checksum");
+    expect(errorCode(() => addressToScript("not an address", networks.mainnet))).toBe(
+      "invalid-base58",
+    );
+    expect(errorCode(() => addressToScript("z".repeat(500), networks.mainnet))).toBe(
+      "input-too-long",
+    );
+  });
+
+  test("every throw is a DcrError carrying a code", () => {
+    const thrown = [
+      () => decodeWif("nonsense"),
+      () => ExtendedKey.fromString("nonsense"),
+      () => mnemonicToMasterKey("not a mnemonic", networks.mainnet),
+      () => calcSignatureHash(subScript, 0x100, oneInputTx(), 0),
+      () => new Transaction().addInput({ hash: new Uint8Array(3), index: 0, tree: 0 }),
+    ];
+    for (const fn of thrown) {
+      let caught: unknown;
+      try {
+        fn();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, `${fn}`).toBeInstanceOf(DcrError);
+      expect(isDcrError(caught)).toBe(true);
+      expect(typeof (caught as DcrError).code).toBe("string");
+      // The message still reads for humans, and names the operation.
+      expect((caught as DcrError).message).toMatch(/^\w[\w.]*: \S/);
+      expect((caught as DcrError).name).toBe("DcrError");
+    }
+  });
+
+  test("hasErrorCode is safe on an unknown value", () => {
+    expect(hasErrorCode(new Error("plain"), "bad-checksum")).toBe(false);
+    expect(hasErrorCode(undefined, "bad-checksum")).toBe(false);
+    expect(hasErrorCode("a string", "bad-checksum")).toBe(false);
+    expect(isDcrError(new Error("plain"))).toBe(false);
   });
 });

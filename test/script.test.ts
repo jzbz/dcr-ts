@@ -12,7 +12,7 @@ import {
   payToScriptHashScript,
   pushData,
 } from "../src/script.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 const pkh = hexToBytes(vectors.keys.pubkeyHash160);
 const pub = hexToBytes(vectors.keys.pubkeyCompressed);
@@ -45,7 +45,7 @@ describe("pushData", () => {
     // dcrd rejects these both when building and at execution, so the script
     // could never run.
     expect(MAX_SCRIPT_ELEMENT_SIZE).toBe(2048);
-    expect(() => pushData(new Uint8Array(2049))).toThrow(/MaxScriptElementSize/);
+    expect(errorCode(() => pushData(new Uint8Array(2049)))).toBe("element-too-large");
   });
 });
 
@@ -81,21 +81,21 @@ describe("payment script builders", () => {
     // not be buildable. The 32-byte case is the realistic slip: passing a
     // private key where the public key was meant type-checks silently.
     const priv = hexToBytes(vectors.keys.privHex);
-    expect(() => payToPubKeyScript(priv)).toThrow(/33 compressed bytes/);
-    expect(() => payToPubKeyScript(new Uint8Array(33))).toThrow(/0x02 or 0x03/);
+    expect(errorCode(() => payToPubKeyScript(priv))).toBe("invalid-public-key");
+    expect(errorCode(() => payToPubKeyScript(new Uint8Array(33)))).toBe("invalid-public-key");
     const offCurve = new Uint8Array(33);
     offCurve[0] = 0x02;
     offCurve.set(hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"), 1);
-    expect(() => payToPubKeyScript(offCurve)).toThrow(/curve/);
+    expect(errorCode(() => payToPubKeyScript(offCurve))).toBe("invalid-public-key");
   });
 
   test("rejects a wrong-length hash", () => {
     for (const n of [0, 19, 21, 32]) {
-      expect(() => payToPubKeyHashScript(new Uint8Array(n)), `p2pkh ${n}`).toThrow(/20 bytes/);
-      expect(() => payToScriptHashScript(new Uint8Array(n)), `p2sh ${n}`).toThrow(/20 bytes/);
-      expect(() => payToPubKeyHashAltScript(new Uint8Array(n), 1), `alt ${n}`).toThrow(/20 bytes/);
+      expect(errorCode(() => payToPubKeyHashScript(new Uint8Array(n))), `p2pkh ${n}`).toBe("bad-length");
+      expect(errorCode(() => payToScriptHashScript(new Uint8Array(n))), `p2sh ${n}`).toBe("bad-length");
+      expect(errorCode(() => payToPubKeyHashAltScript(new Uint8Array(n), 1)), `alt ${n}`).toBe("bad-length");
     }
-    expect(() => payToPubKeyHashAltScript(pkh, 3 as 1)).toThrow(/sigType/);
+    expect(errorCode(() => payToPubKeyHashAltScript(pkh, 3 as 1))).toBe("unsupported-signature-type");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ExtendedKey, HARDENED_OFFSET, hardened } from "../src/hd.js";
 import { networks } from "../src/networks.js";
-import { bytesToHex, hexToBytes, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 describe("HD keys (BIP32, Decred serialization)", () => {
   const seed = hexToBytes(vectors.hd.seedHex);
@@ -149,7 +149,7 @@ describe("HD keys (BIP32, Decred serialization)", () => {
 
   test("hardened derivation from a public key is rejected", () => {
     const pub = ExtendedKey.fromSeed(seed, networks.mainnet).neuter();
-    expect(() => pub.derive(hardened(0))).toThrow(/hardened/);
+    expect(errorCode(() => pub.derive(hardened(0)))).toBe("hardened-from-public");
   });
 
   test("round-trips through fromString", () => {
@@ -178,7 +178,7 @@ describe("HD keys (BIP32, Decred serialization)", () => {
       "x/0",
       "mm/0",
     ]) {
-      expect(() => master.derivePath(bad), bad).toThrow();
+      expect(errorCode(() => master.derivePath(bad)), bad).toBe("invalid-path");
     }
     // Both hardened markers work and agree.
     expect(master.derivePath("m/44h/0h").toString()).toBe(master.derivePath("m/44'/0'").toString());
@@ -194,21 +194,22 @@ describe("HD keys (BIP32, Decred serialization)", () => {
     );
     const acctPub = master.derivePath("m/44'/42'/0'").neuter();
     expect(acctPub.derivePath("M/0/5").toString()).toBe(acctPub.derivePath("m/0/5").toString());
-    expect(() => acctPub.derivePath("M/0'")).toThrow(/hardened/);
+    expect(errorCode(() => acctPub.derivePath("M/0'"))).toBe("hardened-from-public");
   });
 
   test("rejects out-of-range indices instead of silently wrapping", () => {
     const master = ExtendedKey.fromSeed(seed, networks.mainnet);
     // hardened() used to wrap: hardened(2**31) produced a NON-hardened index 0,
     // quietly deriving from the wrong branch.
+    const expected = (v: number) => (Number.isInteger(v) ? "out-of-range" : "not-an-integer");
     for (const bad of [HARDENED_OFFSET, HARDENED_OFFSET + 1, 2 ** 32, -1, 1.5, NaN, Infinity]) {
-      expect(() => hardened(bad), `hardened(${bad})`).toThrow(/out of range|integer/);
+      expect(errorCode(() => hardened(bad)), `hardened(${bad})`).toBe(expected(bad));
     }
     expect(hardened(0)).toBe(HARDENED_OFFSET);
     expect(hardened(HARDENED_OFFSET - 1)).toBe(0xffffffff);
     // derive() itself also validates rather than coercing with >>> 0.
     for (const bad of [-1, 1.5, NaN, 2 ** 32, Infinity]) {
-      expect(() => master.derive(bad), `derive(${bad})`).toThrow(/out of range|integer/);
+      expect(errorCode(() => master.derive(bad)), `derive(${bad})`).toBe(expected(bad));
     }
   });
 
@@ -216,7 +217,7 @@ describe("HD keys (BIP32, Decred serialization)", () => {
     let key = ExtendedKey.fromSeed(seed, networks.mainnet);
     for (let i = 0; i < 255; i++) key = key.derive(0);
     expect(key.depth).toBe(255);
-    expect(() => key.derive(0)).toThrow(/depth/);
+    expect(errorCode(() => key.derive(0))).toBe("max-depth");
   });
 
   test("depth, childNumber and fingerprint are tracked", () => {

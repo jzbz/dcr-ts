@@ -10,6 +10,7 @@
  * The 32-bit version word packs the real version in its low 16 bits and a
  * serialization-type selector in its high 16 bits.
  */
+import { err } from "./errors.js";
 import { blake256 } from "./hash.js";
 import { copyOf, Reader, Writer } from "./bytes.js";
 
@@ -96,8 +97,10 @@ export class Transaction {
     opts: Partial<Omit<TxInput, "previousOutPoint">> = {},
   ): this {
     if (previousOutPoint.hash.length !== 32) {
-      throw new Error(
-        `tx: outpoint hash must be 32 bytes, got ${previousOutPoint.hash.length}`,
+      throw err(
+        "bad-length",
+        "tx.addInput",
+        `outpoint hash must be 32 bytes, got ${previousOutPoint.hash.length}`,
       );
     }
     // dcrd types Tree as int8 and defines TxTreeUnknown = -1, but only Regular (0)
@@ -106,8 +109,10 @@ export class Transaction {
     // Parsing stays permissive (fromBytes accepts any byte, as dcrd's decoder
     // does); this is the construction path.
     if (previousOutPoint.tree !== TxTree.Regular && previousOutPoint.tree !== TxTree.Stake) {
-      throw new Error(
-        `tx: outpoint tree must be ${TxTree.Regular} (regular) or ${TxTree.Stake} (stake), ` +
+      throw err(
+        "out-of-range",
+        "tx.addInput",
+        `outpoint tree must be ${TxTree.Regular} (regular) or ${TxTree.Stake} (stake), ` +
           `got ${previousOutPoint.tree}`,
       );
     }
@@ -142,7 +147,7 @@ export class Transaction {
     w.varInt(this.inputs.length);
     for (const input of this.inputs) {
       const op = input.previousOutPoint;
-      if (op.hash.length !== 32) throw new Error("tx: outpoint hash must be 32 bytes");
+      if (op.hash.length !== 32) throw err("bad-length", "tx", `outpoint hash must be 32 bytes, got ${op.hash.length}`);
       w.bytes(op.hash).u32(op.index).u8(op.tree).u32(input.sequence);
     }
     w.varInt(this.outputs.length);
@@ -216,7 +221,7 @@ export class Transaction {
     const versionWord = r.u32();
     const serType = (versionWord >>> 16) as TxSerializeType;
     if (serType !== TxSerializeType.Full) {
-      throw new Error("tx: fromBytes expects the full serialization");
+      throw err("invalid-argument", "tx.fromBytes", `expects the full serialization, got serialization type ${serType}`);
     }
     const tx = new Transaction();
     tx.version = versionWord & 0xffff;
@@ -245,7 +250,7 @@ export class Transaction {
 
     // Witness.
     const numWit = r.varInt();
-    if (numWit !== numIn) throw new Error("tx: witness/prefix input count mismatch");
+    if (numWit !== numIn) throw err("bad-length", "tx.fromBytes", `witness declares ${numWit} inputs, prefix declares ${numIn}`);
     for (let i = 0; i < numIn; i++) {
       const valueIn = r.i64();
       const blockHeight = r.u32();
@@ -260,7 +265,7 @@ export class Transaction {
         signatureScript,
       });
     }
-    if (r.remaining !== 0) throw new Error("tx: trailing bytes after transaction");
+    if (r.remaining !== 0) throw err("trailing-bytes", "tx.fromBytes", `${r.remaining} byte(s) remain after the transaction`);
     return tx;
   }
 }
@@ -268,7 +273,7 @@ export class Transaction {
 /** Build an OutPoint from a txid *string* (reverses to internal byte order). */
 export function outPointFromTxid(txid: string, index: number, tree = TxTree.Regular): OutPoint {
   if (!/^[0-9a-fA-F]{64}$/.test(txid)) {
-    throw new Error("outPointFromTxid: txid must be 64 hex characters");
+    throw err("invalid-argument", "outPointFromTxid", "txid must be 64 hex characters");
   }
   const display = new Uint8Array(32);
   for (let i = 0; i < 32; i++) display[i] = parseInt(txid.slice(i * 2, i * 2 + 2), 16);

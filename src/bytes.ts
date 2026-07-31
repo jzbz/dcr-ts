@@ -4,6 +4,7 @@
  * All multi-byte integers in the Decred wire format are little-endian. Amounts
  * and a few counters are 64-bit, so those cross through `bigint`.
  */
+import { err } from "./errors.js";
 
 /**
  * Copy `n` bytes out of `src` starting at `off`, always into a fresh buffer.
@@ -21,10 +22,18 @@ export function copyOf(src: Uint8Array, off: number, n: number): Uint8Array {
   // read would silently return a short-then-zero-padded buffer rather than fail,
   // and a negative offset would read from the wrong place.
   if (!Number.isInteger(off) || !Number.isInteger(n) || off < 0 || n < 0) {
-    throw new Error(`copyOf: offset and length must be non-negative integers, got ${off}, ${n}`);
+    throw err(
+      "not-an-integer",
+      "copyOf",
+      `offset and length must be non-negative integers, got ${off}, ${n}`,
+    );
   }
   if (off + n > src.length) {
-    throw new Error(`copyOf: reading ${n} bytes at ${off} overruns a ${src.length}-byte source`);
+    throw err(
+      "out-of-range",
+      "copyOf",
+      `reading ${n} bytes at ${off} overruns a ${src.length}-byte source`,
+    );
   }
   const out = new Uint8Array(n);
   out.set(src.subarray(off, off + n));
@@ -36,7 +45,11 @@ function checkUint(v: number, bits: number, who: string): void {
   // Without this, `v & 0xff` quietly turns NaN into 0, -1 into 255 and 2**32
   // into 0 — writing a wire field the caller never asked for.
   if (!Number.isInteger(v) || v < 0 || v > (bits === 32 ? 0xffffffff : (1 << bits) - 1)) {
-    throw new Error(`Writer.${who}: expected an integer in 0..2^${bits}-1, got ${v}`);
+    throw err(
+      Number.isInteger(v) ? "out-of-range" : "not-an-integer",
+      `Writer.${who}`,
+      `expected an integer in 0..2^${bits}-1, got ${v}`,
+    );
   }
 }
 
@@ -83,7 +96,7 @@ export class Writer {
   // steps. Every input amount and output value in a transaction crosses one of
   // these, and the loop version measured ~33x slower on the primitive.
   u64(v: bigint): this {
-    if (v < 0n || v > 0xffffffffffffffffn) throw new Error("u64 out of range");
+    if (v < 0n || v > 0xffffffffffffffffn) throw err("out-of-range", "Writer.u64", "value must fit in an unsigned 64-bit integer");
     this.ensure(8);
     this.view.setBigUint64(this.len, v, true);
     this.len += 8;
@@ -92,7 +105,7 @@ export class Writer {
 
   /** Signed 64-bit little-endian (two's complement). Used for atom amounts. */
   i64(v: bigint): this {
-    if (v < -(1n << 63n) || v >= 1n << 63n) throw new Error("i64 out of range");
+    if (v < -(1n << 63n) || v >= 1n << 63n) throw err("out-of-range", "Writer.i64", "value must fit in a signed 64-bit integer");
     this.ensure(8);
     this.view.setBigInt64(this.len, v, true);
     this.len += 8;
@@ -109,7 +122,7 @@ export class Writer {
   /** Compact-size varint. */
   varInt(v: number | bigint): this {
     const n = typeof v === "bigint" ? v : BigInt(v);
-    if (n < 0n) throw new Error("varInt: negative");
+    if (n < 0n) throw err("out-of-range", "Writer.varInt", "value must not be negative");
     if (n < 0xfdn) return this.u8(Number(n));
     if (n <= 0xffffn) return this.u8(0xfd).u16(Number(n));
     if (n <= 0xffffffffn) return this.u8(0xfe).u32(Number(n));
@@ -144,7 +157,7 @@ export class Reader {
   }
 
   private need(n: number): void {
-    if (this.off + n > this.data.length) throw new Error("Reader: unexpected end of data");
+    if (this.off + n > this.data.length) throw err("unexpected-end", "Reader", `wanted ${n} more byte(s), ${this.data.length - this.off} remain`);
   }
 
   u8(): number {
@@ -189,7 +202,7 @@ export class Reader {
   bytes(n: number): Uint8Array {
     // A negative or fractional length would slip past `need` (which only checks
     // the upper bound), read nothing, and then rewind the offset.
-    if (!Number.isInteger(n) || n < 0) throw new Error(`Reader: bad length ${n}`);
+    if (!Number.isInteger(n) || n < 0) throw err(Number.isInteger(n) ? "out-of-range" : "not-an-integer", "Reader.bytes", `bad length ${n}`);
     this.need(n);
     const out = copyOf(this.data, this.off, n);
     this.off += n;
@@ -207,17 +220,17 @@ export class Reader {
     if (first < 0xfd) return first;
     if (first === 0xfd) {
       const v = this.u16();
-      if (v < 0xfd) throw new Error("varInt: non-canonical encoding");
+      if (v < 0xfd) throw err("non-canonical-varint", "Reader.varInt", "value could have been encoded in fewer bytes");
       return v;
     }
     if (first === 0xfe) {
       const v = this.u32();
-      if (v < 0x10000) throw new Error("varInt: non-canonical encoding");
+      if (v < 0x10000) throw err("non-canonical-varint", "Reader.varInt", "value could have been encoded in fewer bytes");
       return v;
     }
     const big = this.u64();
-    if (big < 0x100000000n) throw new Error("varInt: non-canonical encoding");
-    if (big > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("varInt: too large");
+    if (big < 0x100000000n) throw err("non-canonical-varint", "Reader.varInt", "value could have been encoded in fewer bytes");
+    if (big > BigInt(Number.MAX_SAFE_INTEGER)) throw err("out-of-range", "Reader.varInt", "value exceeds Number.MAX_SAFE_INTEGER");
     return Number(big);
   }
 

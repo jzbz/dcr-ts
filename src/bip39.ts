@@ -10,6 +10,7 @@
  * derivation itself does not depend on the wordlist at all, only the checksum
  * check does. Import the list you need from `@scure/bip39/wordlists/…`.
  */
+import { err } from "./errors.js";
 import {
   entropyToMnemonic as scureEntropyToMnemonic,
   generateMnemonic as scureGenerateMnemonic,
@@ -79,9 +80,11 @@ export function mnemonicToMasterKey(
   wordlist: Wordlist = english,
 ): ExtendedKey {
   if (!validateMnemonic(mnemonic, wordlist)) {
-    throw new Error(
-      "bip39: invalid mnemonic (bad checksum, or a word not in the wordlist — pass the " +
-        "matching wordlist for a non-English phrase)",
+    throw err(
+      "invalid-mnemonic",
+      "mnemonicToMasterKey",
+      "bad checksum, or a word not in the wordlist — pass the matching wordlist " +
+        "for a non-English phrase",
     );
   }
   return ExtendedKey.fromSeed(mnemonicToSeed(mnemonic, passphrase), network);

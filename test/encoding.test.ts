@@ -23,7 +23,7 @@ import {
 import { isValidPublicKey } from "../src/keys.js";
 import { hash160 } from "../src/hash.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
-import { bytesToHex, hexToBytes, nonEmpty, vectors } from "./helpers.js";
+import { bytesToHex, hexToBytes, nonEmpty, vectors, errorCode } from "./helpers.js";
 
 describe("base58", () => {
   test("raw encode/decode matches dcrd", () => {
@@ -45,7 +45,7 @@ describe("base58", () => {
   test("checkDecode rejects a corrupted checksum", () => {
     const good = checkEncode(hexToBytes("073f00"));
     const bad = good.slice(0, -1) + (good.at(-1) === "A" ? "B" : "A");
-    expect(() => checkDecode(bad)).toThrow(/checksum|base58/);
+    expect(errorCode(() => checkDecode(bad))).toBe("bad-checksum");
   });
 });
 
@@ -120,8 +120,10 @@ describe("addresses", () => {
     const onMainnet = pubKeyHashAddress(hash, networks.mainnet);
     const onTestnet = pubKeyHashAddress(hash, networks.testnet3);
     expect(onMainnet).not.toBe(onTestnet);
-    expect(() => addressToScript(onTestnet, networks.mainnet)).toThrow();
-    expect(() => addressToScript(onMainnet, networks.testnet3)).toThrow();
+    // Not merely "invalid": the code says *why*, which is what a UI needs in
+    // order to say "that is a testnet address" rather than "bad address".
+    expect(errorCode(() => addressToScript(onTestnet, networks.mainnet))).toBe("wrong-network");
+    expect(errorCode(() => addressToScript(onMainnet, networks.testnet3))).toBe("wrong-network");
     // The scripts really are identical, which is why the guard is load-bearing.
     expect(bytesToHex(addressToScript(onTestnet, networks.testnet3))).toBe(
       bytesToHex(addressToScript(onMainnet, networks.mainnet)),
@@ -219,11 +221,11 @@ describe("addresses", () => {
     bad[2] = 1; // Ed25519
     bad.fill(0xff, 3); // not a valid Edwards point
     const addr = checkEncode(bad);
-    expect(() => decodeAddress(addr)).toThrow(/Ed25519 curve point/);
+    expect(errorCode(() => decodeAddress(addr))).toBe("invalid-public-key");
     expect(isValidAddress(addr)).toBe(false);
     // And an unknown suite byte is still rejected.
     bad[2] = 7;
-    expect(() => decodeAddress(checkEncode(bad))).toThrow(/unsupported pubkey signature type/);
+    expect(errorCode(() => decodeAddress(checkEncode(bad)))).toBe("unsupported-signature-type");
   });
 
   test("address encoders reject anything that is not a real public key", () => {
@@ -237,20 +239,21 @@ describe("addresses", () => {
     offCurve.set(hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"), 1);
 
     for (const fn of [addressFromPubKey, pubKeyAddress]) {
-      expect(() => fn(priv, networks.mainnet), `${fn.name} privkey`).toThrow(/public key must be/);
-      expect(() => fn(new Uint8Array(0), networks.mainnet), `${fn.name} empty`).toThrow(
-        /public key must be/,
+      expect(errorCode(() => fn(priv, networks.mainnet)), `${fn.name} privkey`).toBe("invalid-public-key");
+      expect(errorCode(() => fn(new Uint8Array(0), networks.mainnet)), `${fn.name} empty`).toBe(
+        "invalid-public-key",
       );
-      expect(() => fn(offCurve, networks.mainnet), `${fn.name} off-curve`).toThrow(/curve/);
+      expect(errorCode(() => fn(offCurve, networks.mainnet)), `${fn.name} off-curve`).toBe(
+        "invalid-public-key",
+      );
     }
 
     // pubKeyAddress is compressed-only: its payload format is `sigType || X`,
     // which has no room for an uncompressed key.
-    expect(() => pubKeyAddress(hexToBytes(vectors.keys.pubkeyUncompressed), networks.mainnet))
-      .toThrow(/33 compressed bytes/);
+    expect(errorCode(() => pubKeyAddress(hexToBytes(vectors.keys.pubkeyUncompressed), networks.mainnet))).toBe("invalid-public-key");
     const badPrefix = new Uint8Array(33);
     badPrefix[0] = 0x04;
-    expect(() => pubKeyAddress(badPrefix, networks.mainnet)).toThrow(/0x02 or 0x03/);
+    expect(errorCode(() => pubKeyAddress(badPrefix, networks.mainnet))).toBe("invalid-public-key");
   });
 
   test("addressFromPubKey accepts both serializations, which hash differently", () => {
@@ -272,7 +275,7 @@ describe("addresses", () => {
     // An uncompressed key that is not on the curve is still refused.
     const bad = Uint8Array.from(uncompressed);
     bad[1] = bad[1]! ^ 0xff;
-    expect(() => addressFromPubKey(bad, networks.mainnet)).toThrow(/curve/);
+    expect(errorCode(() => addressFromPubKey(bad, networks.mainnet))).toBe("invalid-public-key");
   });
 
   test("pubkey addresses encoding an invalid curve point are rejected", () => {
@@ -292,7 +295,7 @@ describe("addresses", () => {
     payload[2] = 0x00; // ECDSA, even Y
     payload.set(fieldPrime, 3);
     const addr = checkEncode(payload);
-    expect(() => decodeAddress(addr)).toThrow(/curve point/);
+    expect(errorCode(() => decodeAddress(addr))).toBe("invalid-public-key");
     expect(isValidAddress(addr)).toBe(false);
   });
 

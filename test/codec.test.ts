@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Reader, Writer } from "../src/bytes.js";
-import { bytesToHex, hexToBytes } from "./helpers.js";
+import { bytesToHex, hexToBytes, errorCode } from "./helpers.js";
 
 /**
  * The `Writer`/`Reader` primitives had almost no direct coverage: the largest
@@ -29,19 +29,22 @@ describe("Writer fixed-width integers", () => {
   test("reject out-of-range values instead of truncating them", () => {
     // These used to be masked with `& 0xff` etc., quietly turning NaN into 0,
     // -1 into 255 and 2**32 into 0 — writing a field the caller never asked for.
+    // The codes distinguish "outside the range" from "not a whole number", which
+    // the old message-matching could not.
+    const expected = (v: number) => (Number.isInteger(v) ? "out-of-range" : "not-an-integer");
     for (const bad of [-1, 256, 1.5, NaN, Infinity]) {
-      expect(() => new Writer().u8(bad), `u8(${bad})`).toThrow(/expected an integer/);
+      expect(errorCode(() => new Writer().u8(bad)), `u8(${bad})`).toBe(expected(bad));
     }
     for (const bad of [-1, 0x10000, 1.5, NaN]) {
-      expect(() => new Writer().u16(bad), `u16(${bad})`).toThrow(/expected an integer/);
+      expect(errorCode(() => new Writer().u16(bad)), `u16(${bad})`).toBe(expected(bad));
     }
     for (const bad of [-1, 0x100000000, 1.5, NaN]) {
-      expect(() => new Writer().u32(bad), `u32(${bad})`).toThrow(/expected an integer/);
+      expect(errorCode(() => new Writer().u32(bad)), `u32(${bad})`).toBe(expected(bad));
     }
-    expect(() => new Writer().u64(-1n)).toThrow(/out of range/);
-    expect(() => new Writer().u64(1n << 64n)).toThrow(/out of range/);
-    expect(() => new Writer().i64(1n << 63n)).toThrow(/out of range/);
-    expect(() => new Writer().i64(-(1n << 63n) - 1n)).toThrow(/out of range/);
+    expect(errorCode(() => new Writer().u64(-1n))).toBe("out-of-range");
+    expect(errorCode(() => new Writer().u64(1n << 64n))).toBe("out-of-range");
+    expect(errorCode(() => new Writer().i64(1n << 63n))).toBe("out-of-range");
+    expect(errorCode(() => new Writer().i64(-(1n << 63n) - 1n))).toBe("out-of-range");
   });
 
   test("64-bit boundaries survive the round-trip", () => {
@@ -83,7 +86,7 @@ describe("Writer varints and growth", () => {
       expect(bytesToHex(new Writer().varInt(v).finish()), `varInt(${v})`).toBe(hex);
       expect(new Reader(hexToBytes(hex)).varInt(), `read ${hex}`).toBe(v);
     }
-    expect(() => new Writer().varInt(-1)).toThrow(/negative/);
+    expect(errorCode(() => new Writer().varInt(-1))).toBe("out-of-range");
   });
 
   test("grows past the initial buffer with the contents intact", () => {
@@ -129,7 +132,7 @@ describe("Reader bounds", () => {
       ["00000000000000", (r: Reader) => r.i64()],
       ["02aa", (r: Reader) => r.varBytes()],
     ] as const) {
-      expect(() => fn(new Reader(hexToBytes(hex))), hex).toThrow(/unexpected end/);
+      expect(errorCode(() => fn(new Reader(hexToBytes(hex)))), hex).toBe("unexpected-end");
     }
   });
 

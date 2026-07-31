@@ -7,6 +7,14 @@
  * math and standard KDFs come from audited `@noble`/`@scure` packages.
  */
 
+// Errors
+export {
+  DcrError,
+  type DcrErrorCode,
+  isDcrError,
+  hasErrorCode,
+} from "./errors.js";
+
 // Hashing
 export {
   blake256,
