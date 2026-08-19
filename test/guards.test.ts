@@ -505,34 +505,39 @@ describe("the mnemonic wrappers keep their own errors", () => {
       Array(12).fill("zzzzzz").join(" "), // legal count, unknown words: accepted
     ];
     for (const p of probes) {
-      let scureTook: boolean;
+      const label = JSON.stringify(p).slice(0, 48);
+      // Each accepted probe costs two PBKDF2 runs of 2048 HMAC-SHA512 rounds, one
+      // per side, so the seeds are kept rather than recomputed for the byte
+      // comparison below — recomputing doubled the cost of the whole test.
+      let theirs: Uint8Array | null = null;
       try {
-        scureMnemonicToSeedSync(p);
-        scureTook = true;
+        theirs = scureMnemonicToSeedSync(p);
       } catch {
-        scureTook = false;
+        theirs = null;
       }
-      let oursTook: boolean;
+      let ours: Uint8Array | null = null;
       try {
-        mnemonicToSeed(p);
-        oursTook = true;
+        ours = mnemonicToSeed(p);
       } catch (e) {
-        oursTook = false;
+        ours = null;
         // It must be *our* check that rejected, not a throw leaking out of
         // @scure. Without this the assertion below cannot tell the two apart —
         // a pre-check that is too permissive still ends up rejecting, just with
         // an untyped error, which is the failure this function was rewritten to
         // remove.
-        expect(isDcrError(e), `DcrError for ${JSON.stringify(p).slice(0, 48)}`).toBe(true);
+        expect(isDcrError(e), `DcrError for ${label}`).toBe(true);
       }
-      expect(oursTook, `verdict for ${JSON.stringify(p).slice(0, 48)}`).toBe(scureTook);
+      expect(ours !== null, `verdict for ${label}`).toBe(theirs !== null);
       // And where both accept, the bytes must be identical — this is a
       // key-derivation primitive, so the check must gate without altering.
-      if (scureTook) {
-        expect(bytesToHex(mnemonicToSeed(p))).toBe(bytesToHex(scureMnemonicToSeedSync(p)));
+      if (theirs !== null && ours !== null) {
+        expect(bytesToHex(ours), `bytes for ${label}`).toBe(bytesToHex(theirs));
       }
     }
-  });
+    // 2048 HMAC-SHA512 rounds per side per accepted probe is real work, and the
+    // default 5s bound is not a meaningful statement about it — this timed out on
+    // CI at 5264ms while passing locally in 2011ms.
+  }, 30_000);
 
   test("a non-string is an argument fault, not a bad mnemonic", () => {
     // @scure conflates the two: mnemonicToEntropy and mnemonicToSeed throw the
