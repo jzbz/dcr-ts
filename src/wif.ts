@@ -8,6 +8,7 @@
  */
 import { err } from "./errors.js";
 import { base58Decode, base58Encode, maxBase58Length } from "./base58.js";
+import { bytesToBigInt, ED25519_CURVE_ORDER } from "./keys.js";
 import { blake256 } from "./hash.js";
 import type { Network } from "./networks.js";
 import { networks } from "./networks.js";
@@ -31,6 +32,27 @@ function wifChecksum(data: Uint8Array): Uint8Array {
   return blake256(data).subarray(0, 4);
 }
 
+/**
+ * Throw unless an Ed25519-suite key is a scalar dcrd would accept.
+ *
+ * dcrd runs suite-1 keys through `edwards.PrivKeyFromScalar` on both sides of the
+ * codec — `NewWIF` and `DecodeWIF` — which rejects a zero scalar and anything
+ * *above* the group order. The bound really is strict: `D.Cmp(N) > 0`, so a
+ * scalar equal to the order is accepted, even though it derives the identity
+ * point. Matched as written, so the accept/reject boundary is identical.
+ *
+ * The secp256k1 suites are deliberately left unchecked, as dcrd leaves them:
+ * `secp256k1.PrivKeyFromBytes` cannot fail — it reduces mod n and discards the
+ * overflow — so dcrd accepts a zero or all-`ff` key for suites 0 and 2.
+ */
+function assertWifScalar(privateKey: Uint8Array, signatureType: SignatureType, who: string): void {
+  if (signatureType !== SignatureType.Ed25519) return;
+  const scalar = bytesToBigInt(privateKey);
+  if (scalar === 0n || scalar > ED25519_CURVE_ORDER) {
+    throw err("invalid-private-key", who, "Ed25519 scalar is zero or above the group order");
+  }
+}
+
 /** Encode a 32-byte private key as WIF. */
 export function encodeWif(
   privateKey: Uint8Array,
@@ -38,6 +60,16 @@ export function encodeWif(
   signatureType: SignatureType = SignatureType.Ecdsa,
 ): string {
   if (privateKey.length !== 32) throw err("bad-length", "encodeWif", `private key must be 32 bytes, got ${privateKey.length}`);
+  // Checked here as well as on decode, because `payload[2] = signatureType` is a
+  // store into a Uint8Array, which coerces rather than rejects: 256 would land as
+  // suite 0, -1 as suite 255, 1.5 as suite 1, and the enum *name* "Ed25519" as
+  // suite 0 — a well-formed WIF for a suite the caller never asked for. dcrd's
+  // `NewWIF` rejects an unsupported scheme too. The integer guard is what catches
+  // the last of those, since `SignatureType["Ed25519"]` is 1.
+  if (!Number.isInteger(signatureType) || SignatureType[signatureType] === undefined) {
+    throw err("unsupported-signature-type", "encodeWif", `unknown signature type ${signatureType}`);
+  }
+  assertWifScalar(privateKey, signatureType, "encodeWif");
   const payload = new Uint8Array(3 + 32);
   payload[0] = network.privateKeyId[0];
   payload[1] = network.privateKeyId[1];
@@ -80,8 +112,12 @@ export function decodeWif(wif: string): DecodedWif {
     (n) => n.privateKeyId[0] === prefix[0] && n.privateKeyId[1] === prefix[1],
   );
   if (!network) throw err("unknown-prefix", "decodeWif", `no network has the private-key prefix 0x${prefix[0]!.toString(16).padStart(2, "0")}${prefix[1]!.toString(16).padStart(2, "0")}`);
+  // A deliberate divergence: dcrd's `DecodeWIF` switches on this byte with no
+  // default arm, so an unknown suite yields a WIF holding a nil private key —
+  // one whose own `String()` is no longer a WIF. Rejecting is the only sane read.
   if (SignatureType[signatureType] === undefined) {
     throw err("unsupported-signature-type", "decodeWif", `unknown signature type ${signatureType}`);
   }
+  assertWifScalar(privateKey, signatureType, "decodeWif");
   return { privateKey, network, signatureType };
 }

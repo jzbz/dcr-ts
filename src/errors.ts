@@ -44,7 +44,7 @@ export type DcrErrorCode =
   | "trailing-bytes"
 
   // --- Keys ---
-  /** Not a valid secp256k1 scalar (zero, or at/above the group order). */
+  /** Not a valid private scalar (zero, or out of range for the suite's group order). */
   | "invalid-private-key"
   /** Wrong length or prefix, or not a point on the curve. */
   | "invalid-public-key"

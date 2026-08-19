@@ -12,6 +12,9 @@ import { ed25519 } from "@noble/curves/ed25519";
 /** The secp256k1 group order. */
 export const CURVE_ORDER: bigint = secp256k1.CURVE.n;
 
+/** The Ed25519 group order. Bounds WIF scalars for that signature suite. */
+export const ED25519_CURVE_ORDER: bigint = ed25519.CURVE.n;
+
 /** True when `key` is a valid secp256k1 private scalar (0 < key < n). */
 export function isValidPrivateKey(key: Uint8Array): boolean {
   if (key.length !== 32) return false;

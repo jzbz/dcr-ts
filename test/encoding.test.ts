@@ -20,8 +20,8 @@ import {
   pubKeyHashSchnorrAddress,
   scriptHashAddress,
 } from "../src/address.js";
-import { isValidPublicKey } from "../src/keys.js";
-import { hash160 } from "../src/hash.js";
+import { isValidPublicKey, scalarToBytes } from "../src/keys.js";
+import { blake256, hash160 } from "../src/hash.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
 import { bytesToHex, hexToBytes, nonEmpty, vectors, errorCode } from "./helpers.js";
 
@@ -309,6 +309,90 @@ describe("addresses", () => {
 });
 
 describe("WIF", () => {
+  // dcrd's NewWIF refuses to build any of the strings the negative cases need, so
+  // they are assembled here. Not trusted on its own: the round-trip test below
+  // pins this constructor against wif_ed25519, a string dcrd itself produced.
+  const makeWif = (suite: number, key: Uint8Array): string => {
+    const payload = new Uint8Array(35);
+    payload[0] = networks.mainnet.privateKeyId[0]!;
+    payload[1] = networks.mainnet.privateKeyId[1]!;
+    payload[2] = suite;
+    payload.set(key, 3);
+    const full = new Uint8Array(39);
+    full.set(payload);
+    full.set(blake256(payload).subarray(0, 4), 35);
+    return base58Encode(full);
+  };
+
+  test("all three signature suites round-trip against dcrd", () => {
+    // wif_ed25519 and wif_schnorr were generated and then never read by any test.
+    const w = vectors.keys.wif.mainnet!;
+    const edKey = hexToBytes(w.wif_ed25519_payload).slice(3, 35);
+    const secpKey = hexToBytes(vectors.keys.privHex);
+
+    expect(decodeWif(w.wif_ed25519).signatureType).toBe(SignatureType.Ed25519);
+    expect(bytesToHex(decodeWif(w.wif_ed25519).privateKey)).toBe(bytesToHex(edKey));
+    expect(encodeWif(edKey, networks.mainnet, SignatureType.Ed25519)).toBe(w.wif_ed25519);
+
+    expect(decodeWif(w.wif_schnorr).signatureType).toBe(SignatureType.SchnorrSecp256k1);
+    expect(encodeWif(secpKey, networks.mainnet, SignatureType.SchnorrSecp256k1)).toBe(w.wif_schnorr);
+
+    // The in-test constructor agrees with dcrd byte for byte.
+    expect(makeWif(SignatureType.Ed25519, edKey)).toBe(w.wif_ed25519);
+    expect(makeWif(SignatureType.SchnorrSecp256k1, secpKey)).toBe(w.wif_schnorr);
+  });
+
+  test("an unknown suite byte is refused by both halves of the codec", () => {
+    const key = hexToBytes(vectors.keys.privHex);
+    // dcrd's DecodeWIF has no default arm here and returns a WIF holding a nil
+    // private key, with the scheme defaulted to ECDSA. A deliberate divergence.
+    for (const bad of [3, 5, 255]) {
+      expect(errorCode(() => decodeWif(makeWif(bad, key))), `decode ${bad}`).toBe(
+        "unsupported-signature-type",
+      );
+    }
+    // Encode-side: the payload byte is a Uint8Array store, so these all used to
+    // coerce into a valid WIF for a suite the caller never asked for.
+    for (const bad of [3, 5, 255, 256, -1, 1.5, NaN, "Ed25519"]) {
+      expect(
+        errorCode(() => encodeWif(key, networks.mainnet, bad as unknown as SignatureType)),
+        `encode ${String(bad)}`,
+      ).toBe("unsupported-signature-type");
+    }
+  });
+
+  test("Ed25519 scalars follow dcrd's bounds, secp256k1 suites stay unchecked", () => {
+    const order = 2n ** 252n + 27742317777372353535851937790883648493n;
+    const zero = new Uint8Array(32);
+    const allFf = new Uint8Array(32).fill(0xff);
+    // edwards.PrivKeyFromScalar rejects zero and anything *above* the order, and
+    // accepts exactly the order (D.Cmp(N) > 0). Every case checked against dcrd.
+    for (const key of [zero, scalarToBytes(order + 1n), allFf]) {
+      expect(errorCode(() => decodeWif(makeWif(SignatureType.Ed25519, key)))).toBe(
+        "invalid-private-key",
+      );
+      expect(errorCode(() => encodeWif(key, networks.mainnet, SignatureType.Ed25519))).toBe(
+        "invalid-private-key",
+      );
+    }
+    for (const s of [1n, order - 1n, order]) {
+      const key = scalarToBytes(s);
+      expect(bytesToHex(decodeWif(makeWif(SignatureType.Ed25519, key)).privateKey), `scalar ${s}`)
+        .toBe(bytesToHex(key));
+      expect(
+        decodeWif(encodeWif(key, networks.mainnet, SignatureType.Ed25519)).signatureType,
+      ).toBe(SignatureType.Ed25519);
+    }
+    // dcrd's secp256k1 PrivKeyFromBytes cannot fail — it reduces mod n and drops
+    // the overflow — so the same scalars must still encode and decode there.
+    for (const suite of [SignatureType.Ecdsa, SignatureType.SchnorrSecp256k1]) {
+      for (const key of [zero, allFf]) {
+        expect(decodeWif(makeWif(suite, key)).signatureType, `suite ${suite}`).toBe(suite);
+        expect(decodeWif(encodeWif(key, networks.mainnet, suite)).signatureType).toBe(suite);
+      }
+    }
+  });
+
   test("encode/decode matches dcrd for all networks", () => {
     const priv = hexToBytes(vectors.keys.privHex);
     for (const [name, network] of Object.entries(networks)) {

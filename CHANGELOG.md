@@ -64,6 +64,26 @@ This library has **not** been independently audited. See [SECURITY.md](SECURITY.
   and `calcSignatureHash` rejects a non-integer input index (`NaN` slipped past both
   range checks and produced a hash committing the subScript to no input).
 
+- **`encodeWif` validated nothing about the signature-suite argument.** It went
+  straight into the payload byte, and a `Uint8Array` store coerces rather than
+  rejects: `256` became suite 0, `-1` became suite 255, `1.5` became suite 1, and
+  the enum *name* `"Ed25519"` became suite 0 — a well-formed WIF for a suite the
+  caller never asked for, or one this library's own `decodeWif` refuses. dcrd's
+  `NewWIF` errors on an unsupported scheme. `decodeWif` continues to reject
+  unknown suite bytes, which is a **deliberate divergence**: dcrd's `DecodeWIF`
+  has no default arm and accepts them as a WIF holding a nil private key, whose
+  own `String()` is not a WIF.
+- **`decodeWif` did not bound the Ed25519 scalar.** dcrd runs suite-1 keys through
+  `edwards.PrivKeyFromScalar` in both `NewWIF` and `DecodeWIF`, which rejects zero
+  and anything above the group order, so a zero-key or all-`ff` Ed25519 WIF
+  decoded here and then failed to import anywhere else. Matched exactly, including
+  dcrd's acceptance of a scalar equal to the order — the check there is
+  `D.Cmp(N) > 0`. Both sides of the codec validate, because Ed25519 keys are 32
+  uniform bytes against an order near 2^252: about 15 of every 16 random keys
+  exceed it, so a decode-only check would have left `encodeWif` minting strings
+  its own decoder rejects. The secp256k1 suites stay unchecked, as in dcrd, whose
+  `PrivKeyFromBytes` cannot fail — it reduces mod n and discards the overflow.
+
 - **A zero HMAC left half is an invalid child on both derivation paths.** dcrd's
   `hdkeychain` rejects `IL` when `overflow || ilModN.IsZero()`, before it splits
   on private-vs-public, so a zero `IL` invalidates the index for either. This
