@@ -196,6 +196,53 @@ Two consequences worth knowing:
 Both variants are pinned against dcrd-generated vectors from a seed chosen to
 make them disagree (`hd.leadingZero` in the fixture).
 
+## Where this deliberately does not match dcrd
+
+Byte-exactness is the goal everywhere it is achievable, and every serialization
+this library produces is pinned against dcrd-generated vectors. But byte formats
+are not the whole contract: two implementations can agree on every byte they
+*emit* and still disagree on what they *accept*. Four accept/reject divergences
+are deliberate. Each one fails closed — this library rejects something dcrd
+takes — so "accepted by dcr-ts" implies "accepted by dcrd", never the reverse.
+
+- **An extended key whose version and key type disagree is refused.**
+  `NewKeyFromString` decides private-vs-public from the key-data byte and treats
+  the version bytes only as a network tag, so a string beginning `dpub` that
+  wraps `0x00 ‖ privkey32` parses there as a *private* key — and re-serializes as
+  `dprv`, since dcrd re-attaches the version matching the key it ended up with.
+  `ExtendedKey.fromString` takes the type from the version and throws
+  `invalid-public-key` (or `invalid-private-key` the other way). No honest encoder
+  emits such a string, dcrd's own `String()` included, so nothing round-trips
+  differently. The point is that a `dpub` prefix and `isPrivate === false` can
+  never disagree, which matters because "it starts with dpub, so it is safe to
+  paste here" is a real pattern.
+- **A WIF with an unknown signature-suite byte is refused.** dcrd's `DecodeWIF`
+  switches on that byte with no default arm, so an unrecognised suite yields a
+  `WIF` holding a **nil** private key, with the scheme silently defaulted to
+  ECDSA and no error. Its own `String()` on that struct is not a WIF. There is
+  nothing there to be compatible with.
+- **The signing entry points reject an unusable private key.** dcrd's
+  `secp256k1.PrivKeyFromBytes` cannot fail: it reduces mod n and left-pads a
+  short slice, so a zero key signs under an all-zero-X public key and a 31-byte
+  key is silently padded and signed. `signHash` and friends throw
+  `invalid-private-key` or `bad-length` instead.
+- **`Transaction.fromBytes` applies no input/output count caps.** This one is the
+  exception to the pattern above: it is *more* permissive than dcrd, which
+  rejects counts over `maxTxInPerMessage` (780336) or `maxTxOutPerMessage`
+  (3728271). Those bounds exist because dcrd decodes from an `io.Reader` of
+  unknown length and sizes `make([]TxIn, count)` from the count before reading
+  anything; here the argument is a `Uint8Array` whose length is already the bound,
+  and nothing is allocated from a declared count. The only blobs that parse here
+  and not there are ~43 MiB or larger, which is over `MaxMessagePayload` and 115x
+  mainnet's `MaxTxSize` — neither relayable nor valid. See `fromBytes` for the
+  caller-side sizing advice that does matter.
+
+One more divergence is worth naming because it is not a rejection at all:
+`ExtendedKey.fromString` takes **no network** and recognises all four, reporting
+which it found on `.network`. dcrd's `NewKeyFromString` takes `NetworkParams` and
+returns `ErrWrongNetwork` for any other network's version. A caller that wants
+dcrd's answer compares `.network` itself.
+
 ## Development
 
 ```bash

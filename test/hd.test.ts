@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ExtendedKey, HARDENED_OFFSET, hardened } from "../src/hd.js";
 import { networks } from "../src/networks.js";
+import { checkEncode } from "../src/base58.js";
 import {
   parsePublicKeyPoint,
   privateKeyTweakAdd,
@@ -182,6 +183,41 @@ describe("HD keys (BIP32, Decred serialization)", () => {
     const child = privateKeyTweakAdd(kPar, one);
     expect(child).not.toBeNull();
     expect(bytesToHex(child!)).not.toBe(bytesToHex(kPar));
+  });
+
+  // A deliberate divergence from dcrd, pinned here so it stays deliberate. dcrd's
+  // NewKeyFromString takes the key type from keyData[0] and validates the version
+  // only as belonging to the caller's network, so a `dpub`-prefixed string
+  // wrapping 0x00 || priv32 parses there as a PRIVATE key and re-serializes as
+  // `dprv` — newExtendedKey re-attaches the version matching the key it ended up
+  // with. This library takes the type from the version and refuses the
+  // contradiction, so what a human reads off the prefix and what `isPrivate`
+  // reports can never disagree. No honest encoder emits such a string.
+  test("a version/key-type mismatch is refused, where dcrd would normalize it", () => {
+    const master = ExtendedKey.fromSeed(seed, networks.mainnet);
+
+    const privUnderPubVersion = master.serialize();
+    privUnderPubVersion.set(networks.mainnet.hdPublicKeyId, 0);
+    expect(errorCode(() => ExtendedKey.fromString(checkEncode(privUnderPubVersion)))).toBe(
+      "invalid-public-key",
+    );
+
+    const pubUnderPrivVersion = master.neuter().serialize();
+    pubUnderPrivVersion.set(networks.mainnet.hdPrivateKeyId, 0);
+    expect(errorCode(() => ExtendedKey.fromString(checkEncode(pubUnderPrivVersion)))).toBe(
+      "invalid-private-key",
+    );
+  });
+
+  // Also deliberate: fromString takes no network and reports the one it found,
+  // where dcrd's NewKeyFromString takes NetworkParams and answers ErrWrongNetwork
+  // for any other network's version. A caller that needs dcrd's answer compares
+  // `.network` itself.
+  test("fromString accepts any known network's version and reports which", () => {
+    for (const [name, network] of Object.entries(networks)) {
+      const parsed = ExtendedKey.fromString(ExtendedKey.fromSeed(seed, network).toString());
+      expect(parsed.network, name).toBe(network);
+    }
   });
 
   test("round-trips through fromString", () => {

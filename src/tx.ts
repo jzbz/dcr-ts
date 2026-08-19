@@ -241,7 +241,29 @@ export class Transaction {
     return toHex(reverse(blake256(concat)));
   }
 
-  /** Parse a full (prefix ‖ witness) serialization. */
+  /**
+   * Parse a full (prefix ‖ witness) serialization.
+   *
+   * The declared input and output counts are deliberately **not** capped, where
+   * dcrd's `decodePrefix` and `decodeWitness` reject anything above
+   * `maxTxInPerMessage` (780336) or `maxTxOutPerMessage` (3728271) — the counts
+   * that could fit a 32 MiB `MaxMessagePayload`. Those bounds exist because dcrd
+   * decodes from an `io.Reader` of unknown length and sizes `make([]TxIn, count)`
+   * from the count *before* reading an input; here the argument is a `Uint8Array`
+   * whose length is already the bound, and nothing is sized from a count —
+   * `Reader` checks every read against the bytes that remain, so an inflated
+   * count fails at the first short read having allocated nothing. The only
+   * observable difference is that a blob of ~43 MiB or larger declaring more than
+   * 780336 inputs parses here and does not in dcrd; such a transaction is neither
+   * relayable (over `MaxMessagePayload`) nor valid (mainnet `MaxTxSize` is 393216
+   * bytes, 115x smaller). On a *truncated* blob both reject, only with different
+   * errors: dcrd's `ErrTooManyTxs` against this library's `unexpected-end`.
+   *
+   * Cost is still linear in `bytes.length`, so cap the size of untrusted input at
+   * the call site. dcrd's count limits would not help with that: 32 MiB holds
+   * 818400 minimal prefix inputs and the cap is 780336, so a buffer at the wire
+   * maximum stays under it.
+   */
   static fromBytes(bytes: Uint8Array): Transaction {
     const r = new Reader(bytes);
     const versionWord = r.u32();

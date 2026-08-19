@@ -55,6 +55,21 @@ which documents its own timing properties. The Decred-specific code in this libr
 constant-time, and JIT compilation makes such claims hard to support in JavaScript
 regardless. Do not use this where an attacker can measure your timing.
 
+### Untrusted input must be size-capped by the caller
+
+`Transaction.fromBytes` is linear in the length of the buffer it is handed and
+imposes no limit of its own. It allocates nothing from a declared input or output
+count — an inflated count fails at the first read past the end of the buffer, not
+after reserving memory for it — so the cost is bounded by the bytes you actually
+pass. That still means a large buffer costs proportionally large time and memory.
+
+dcrd's own `maxTxInPerMessage` / `maxTxOutPerMessage` caps are not reproduced,
+and would not help if they were: they bound counts, not bytes, and a buffer at
+dcrd's 32 MiB wire maximum holds fewer minimal inputs than the cap allows. Cap
+the size of anything untrusted before parsing it. The base58 decoders are
+separately bounded, since they are quadratic — see `MAX_ADDRESS_LENGTH`,
+`MAX_WIF_LENGTH` and `MAX_EXTENDED_KEY_LENGTH`.
+
 ### Out of scope
 
 The library does not implement, and will not protect you from getting wrong:

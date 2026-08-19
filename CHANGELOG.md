@@ -158,6 +158,32 @@ branching on `hasErrorCode` could not classify the failure.
   dependency threw. Both predicates now also accept a `Symbol.for("dcr-ts.DcrError")`
   brand, which is the same value in every copy and every realm.
 
+### Documented — deliberate divergences from dcrd
+
+Byte formats are not the whole contract: two implementations can agree on every
+byte they emit and still disagree on what they accept. Four such divergences were
+undocumented, which is the dangerous shape for a parity-targeted library — a
+consumer assuming "accepted by dcr-ts ⇔ accepted by dcrd" had no way to know
+otherwise. They are now stated in a README section and pinned by tests, so they
+stay deliberate rather than becoming accidents.
+
+- **An extended key whose version and key type disagree is refused.** dcrd's
+  `NewKeyFromString` decides private-vs-public from `keyData[0]` and treats the
+  version bytes only as a network tag, so a `dpub`-prefixed string wrapping
+  `0x00 ‖ privkey32` parses there as a *private* key and re-serializes as `dprv`.
+  Aligning was considered and rejected: it would make a string a user reads as
+  public decode to a live private key. Related, and also documented:
+  `ExtendedKey.fromString` takes no network and recognises all four, where dcrd
+  requires `NetworkParams` and answers `ErrWrongNetwork`.
+- **`Transaction.fromBytes` applies no input/output count caps**, where dcrd
+  rejects counts over 780336 / 3728271. dcrd's caps bound an allocation it makes
+  from the count before reading; nothing here is sized from a count, so the caps
+  would bound nothing. Only blobs of ~43 MiB or larger differ, which are neither
+  relayable nor valid. The caller-side sizing advice that does matter is now in
+  SECURITY.md and on `fromBytes` itself.
+- The WIF unknown-suite and private-key-rejection divergences recorded above are
+  covered in the same section.
+
 ### Fixed — availability
 
 - **base58 decoding is bounded before it runs.** It is quadratic in input length,
