@@ -7,6 +7,7 @@
  */
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { err } from "./errors.js";
+import { isBytes } from "./bytes.js";
 import { assertPrivateKey, publicKeyFromPrivate } from "./keys.js";
 import { pushData } from "./script.js";
 import {
@@ -37,6 +38,9 @@ import type { Transaction } from "./tx.js";
  * here — the same reason {@link assertPrivateKey} exists.
  */
 function assertHash32(hash: Uint8Array, who: string): void {
+  if (!isBytes(hash)) {
+    throw err("invalid-argument", who, "signature hash must be a Uint8Array");
+  }
   if (hash.length !== 32) {
     throw err("bad-length", who, `signature hash must be 32 bytes, got ${hash.length}`);
   }

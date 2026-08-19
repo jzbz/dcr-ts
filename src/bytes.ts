@@ -40,6 +40,24 @@ export function copyOf(src: Uint8Array, off: number, n: number): Uint8Array {
   return out;
 }
 
+/**
+ * True when `v` is really a byte array.
+ *
+ * `length` is not enough on its own: a 32-*character* string satisfies
+ * `v.length === 32`, and so does a 32-element `Array<number>` or `Int8Array`.
+ * Anything that then reads the value byte by byte gets a number that is not the
+ * key, hash or scalar the caller meant — a wrong answer rather than a failure.
+ *
+ * Tag-based rather than `instanceof`, for the same reason {@link DcrError} is
+ * branded with a registry symbol: `instanceof Uint8Array` is false for a typed
+ * array from another realm (a `vm` context, an iframe, a worker boundary). The
+ * tag is `"[object Uint8Array]"` in every realm, and for a Node `Buffer`, which
+ * is a `Uint8Array` subclass and must keep working.
+ */
+export function isBytes(v: unknown): v is Uint8Array {
+  return Object.prototype.toString.call(v) === "[object Uint8Array]";
+}
+
 /** Reject a value that would be silently truncated by a fixed-width write. */
 function checkUint(v: number, bits: number, who: string): void {
   // Without this, `v & 0xff` quietly turns NaN into 0, -1 into 255 and 2**32

@@ -6,8 +6,14 @@
  * keys, scalar/point arithmetic for BIP32 derivation).
  */
 import { err } from "./errors.js";
+import { isBytes } from "./bytes.js";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { ed25519 } from "@noble/curves/ed25519";
+
+/** Name a rejected argument in an error message, without interpolating its value. */
+function typeName(v: unknown): string {
+  return Object.prototype.toString.call(v).slice(8, -1).toLowerCase();
+}
 
 /** The secp256k1 group order. */
 export const CURVE_ORDER: bigint = secp256k1.CURVE.n;
@@ -17,7 +23,11 @@ export const ED25519_CURVE_ORDER: bigint = ed25519.CURVE.n;
 
 /** True when `key` is a valid secp256k1 private scalar (0 < key < n). */
 export function isValidPrivateKey(key: Uint8Array): boolean {
-  if (key.length !== 32) return false;
+  // The type check is load-bearing, not defensive: without it a 32-character
+  // string, a 32-element `Array<number>` or an `Int8Array` all satisfy the length
+  // test, and `bytesToBigInt` reads them into some unrelated number — so this
+  // predicate answered `true` for values that are not keys at all.
+  if (!isBytes(key) || key.length !== 32) return false;
   const n = bytesToBigInt(key);
   return n > 0n && n < CURVE_ORDER;
 }
@@ -37,6 +47,9 @@ export function isValidPrivateKey(key: Uint8Array): boolean {
  * silently padded. Rejecting is the safer contract for a signing API.
  */
 export function assertPrivateKey(key: Uint8Array, who: string): void {
+  if (!isBytes(key)) {
+    throw err("invalid-argument", who, `private key must be a Uint8Array, got ${typeName(key)}`);
+  }
   if (key.length !== 32) {
     throw err("bad-length", who, `private key must be 32 bytes, got ${key.length}`);
   }

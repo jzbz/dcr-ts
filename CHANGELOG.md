@@ -129,6 +129,20 @@ branching on `hasErrorCode` could not classify the failure.
 - **`Writer.varInt` threw a bare `RangeError`.** A non-integer `number` reached
   `BigInt(v)`, which the engine rejects itself. It is checked first now, with the
   same `not-an-integer` code `checkUint` already used one screen up.
+- **`isValidPrivateKey` returned `true` for values that are not keys.** Its only
+  shape test was `key.length !== 32`, and `length` is satisfied by a 32-*character*
+  string, a 32-element `Array<number>`, an `Int8Array` and a `Float64Array` —
+  `bytesToBigInt` then read each one into some unrelated number. So the predicate
+  answered `true` for a hex string, which is a wrong answer rather than a failure,
+  and a string of non-digits escaped as a bare `SyntaxError` out of `BigInt()`.
+  The same hole sat behind `assertPrivateKey`, `encodeWif` and the new 32-byte
+  hash check, where `@noble`'s own `Error` was doing the rejecting. All four now
+  test the value really is a byte array and report `invalid-argument`. The test is
+  tag-based rather than `instanceof`, for the same reason `DcrError` carries a
+  registry-symbol brand: `instanceof Uint8Array` is false for a typed array from
+  another realm. A Node `Buffer` — a `Uint8Array` subclass, and the likeliest
+  input of all — keeps working.
+
 - **`signHash` and `verifyHash` accepted a hash of any length, and scalar
   reduction is not injective.** A short hash signs identically to itself
   left-padded with zeros to 32 bytes — `signHash(h31)` and

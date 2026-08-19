@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ExtendedKey, MAX_EXTENDED_KEY_LENGTH } from "../src/hd.js";
 import { MAX_ADDRESS_LENGTH, decodeAddress, isValidAddress } from "../src/address.js";
-import { MAX_WIF_LENGTH, decodeWif } from "../src/wif.js";
+import { MAX_WIF_LENGTH, decodeWif, encodeWif, SignatureType } from "../src/wif.js";
 import { maxBase58Length } from "../src/base58.js";
 import {
   entropyToMnemonic,
@@ -30,7 +30,12 @@ import {
   verifyHash,
 } from "../src/sign.js";
 import { payToPubKeyHashScript, scriptParses } from "../src/script.js";
-import { CURVE_ORDER, publicKeyFromPrivate, scalarToBytes } from "../src/keys.js";
+import {
+  CURVE_ORDER,
+  isValidPrivateKey,
+  publicKeyFromPrivate,
+  scalarToBytes,
+} from "../src/keys.js";
 import { Transaction, TxTree } from "../src/tx.js";
 import { Writer } from "../src/bytes.js";
 import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
@@ -341,6 +346,64 @@ describe("every private-key entry point rejects an unusable key", () => {
     const script = signatureScript(oneInputTx(), 0, subScript, SigHashType.All, priv);
     expect(script.length).toBeGreaterThan(70);
     expect(scriptParses(script)).toBe(true);
+  });
+});
+
+describe("length alone does not make something a byte array", () => {
+  // `v.length === 32` is satisfied by a 32-character string, a 32-element
+  // Array<number> and an Int8Array. Anything that then reads the value byte by
+  // byte gets an unrelated number, so isValidPrivateKey answered *true* for
+  // values that are not keys — a wrong answer, not a failure — and a string of
+  // non-digits escaped as a bare SyntaxError out of BigInt().
+  const notBytes: Array<[string, unknown]> = [
+    ["32-char digit string", "1".repeat(32)],
+    ["32-char letter string", "a".repeat(32)],
+    ["Array<number> of 32", Array.from({ length: 32 }, (_, i) => i + 1)],
+    ["Int8Array of 32", new Int8Array(32).fill(7)],
+    ["Float64Array of 32", new Float64Array(32).fill(7)],
+  ];
+
+  test("isValidPrivateKey answers false rather than true or throwing", () => {
+    for (const [name, v] of notBytes) {
+      expect(isValidPrivateKey(v as Uint8Array), name).toBe(false);
+    }
+  });
+
+  test("the key and hash guards reject them with a code", () => {
+    const h = new Uint8Array(32).fill(9);
+    for (const [name, v] of notBytes) {
+      expect(errorCode(() => signHash(h, v as Uint8Array)), `signHash ${name}`).toBe(
+        "invalid-argument",
+      );
+      expect(errorCode(() => publicKeyFromPrivate(v as Uint8Array)), `pubkey ${name}`).toBe(
+        "invalid-argument",
+      );
+      expect(
+        errorCode(() => encodeWif(v as Uint8Array, networks.mainnet, SignatureType.Ed25519)),
+        `encodeWif ${name}`,
+      ).toBe("invalid-argument");
+      expect(errorCode(() => signHash(v as Uint8Array, priv)), `hash ${name}`).toBe(
+        "invalid-argument",
+      );
+    }
+  });
+
+  test("a Buffer and a cross-realm Uint8Array still work", async () => {
+    // The check is tag-based, not instanceof, for the same reason DcrError is
+    // branded: instanceof is false for a typed array from another realm. Buffer
+    // is a Uint8Array subclass and is the single most likely input in Node.
+    const fromBuffer = Buffer.alloc(32, 7);
+    expect(isValidPrivateKey(fromBuffer)).toBe(true);
+    expect(signHash(new Uint8Array(32).fill(9), fromBuffer).length).toBeGreaterThan(64);
+
+    const vm = await import("node:vm");
+    const foreign = vm.runInNewContext("new Uint8Array(32).fill(7)") as Uint8Array;
+    expect(foreign instanceof Uint8Array, "precondition: instanceof fails cross-realm").toBe(false);
+    expect(isValidPrivateKey(foreign)).toBe(true);
+    // Same key, same signature, whichever realm the bytes came from.
+    expect(bytesToHex(signHash(new Uint8Array(32).fill(9), foreign))).toBe(
+      bytesToHex(signHash(new Uint8Array(32).fill(9), new Uint8Array(32).fill(7))),
+    );
   });
 });
 

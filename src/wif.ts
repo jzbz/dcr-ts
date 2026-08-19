@@ -8,6 +8,7 @@
  */
 import { err } from "./errors.js";
 import { base58Decode, base58Encode, maxBase58Length } from "./base58.js";
+import { isBytes } from "./bytes.js";
 import { bytesToBigInt, ED25519_CURVE_ORDER } from "./keys.js";
 import { blake256 } from "./hash.js";
 import type { Network } from "./networks.js";
@@ -59,6 +60,7 @@ export function encodeWif(
   network: Network,
   signatureType: SignatureType = SignatureType.Ecdsa,
 ): string {
+  if (!isBytes(privateKey)) throw err("invalid-argument", "encodeWif", "private key must be a Uint8Array");
   if (privateKey.length !== 32) throw err("bad-length", "encodeWif", `private key must be 32 bytes, got ${privateKey.length}`);
   // Checked here as well as on decode, because `payload[2] = signatureType` is a
   // store into a Uint8Array, which coerces rather than rejects: 256 would land as
