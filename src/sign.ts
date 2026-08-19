@@ -6,7 +6,7 @@
  * signature script for a P2PKH input is `<DER-sig ‖ hashType> <pubkey>`.
  */
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { publicKeyFromPrivate } from "./keys.js";
+import { assertPrivateKey, publicKeyFromPrivate } from "./keys.js";
 import { pushData } from "./script.js";
 import {
   assertSignableSigHashType,
@@ -18,6 +18,7 @@ import type { Transaction } from "./tx.js";
 
 /** DER-encode a deterministic low-S ECDSA signature over a 32-byte hash. */
 export function signHash(hash: Uint8Array, privateKey: Uint8Array): Uint8Array {
+  assertPrivateKey(privateKey, "signHash");
   const sig = secp256k1.sign(hash, privateKey, { lowS: true });
   return sig.toDERRawBytes();
 }

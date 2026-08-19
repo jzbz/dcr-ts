@@ -4,7 +4,9 @@ import { MAX_ADDRESS_LENGTH, decodeAddress, isValidAddress } from "../src/addres
 import { MAX_WIF_LENGTH, decodeWif } from "../src/wif.js";
 import { maxBase58Length } from "../src/base58.js";
 import {
+  entropyToMnemonic,
   generateMnemonic,
+  mnemonicToEntropy,
   mnemonicToMasterKey,
   mnemonicToSeed,
   validateMnemonic,
@@ -19,10 +21,18 @@ import {
   isSignableSigHashType,
   SigHashType,
 } from "../src/sighash.js";
-import { rawTxInSignature, signHash, signP2PKHInput, verifyHash } from "../src/sign.js";
+import {
+  rawTxInSignature,
+  signatureScript,
+  signHash,
+  signP2PKHInput,
+  signP2PKHInputs,
+  verifyHash,
+} from "../src/sign.js";
 import { payToPubKeyHashScript, scriptParses } from "../src/script.js";
-import { publicKeyFromPrivate } from "../src/keys.js";
+import { CURVE_ORDER, publicKeyFromPrivate, scalarToBytes } from "../src/keys.js";
 import { Transaction, TxTree } from "../src/tx.js";
+import { Writer } from "../src/bytes.js";
 import { hexToBytes, vectors, errorCode } from "./helpers.js";
 
 const priv = hexToBytes(vectors.keys.privHex);
@@ -284,6 +294,98 @@ describe("mnemonicToMasterKey validates the phrase", () => {
   });
 });
 
+describe("every private-key entry point rejects an unusable key", () => {
+  // `@noble` checks the same two conditions, but throws its own plain Error — so
+  // without the guard a zeroed or wrong-length key buffer escapes the contract
+  // and `hasErrorCode` cannot classify the one key mistake worth classifying.
+  // dcrd is no help here: `PrivKeyFromBytes` cannot fail, so signing with a zero
+  // key there yields a real DER signature under an all-zero-X public key, and a
+  // short key is silently left-padded. Rejecting is deliberate.
+  const unusable: Array<[string, Uint8Array, string]> = [
+    ["zero", new Uint8Array(32), "invalid-private-key"],
+    ["n", scalarToBytes(CURVE_ORDER), "invalid-private-key"],
+    ["all-ff", new Uint8Array(32).fill(0xff), "invalid-private-key"],
+    ["31 bytes", new Uint8Array(31).fill(7), "bad-length"],
+    ["33 bytes", new Uint8Array(33).fill(7), "bad-length"],
+  ];
+
+  test("through all six of them", () => {
+    for (const [name, key, code] of unusable) {
+      const calls: Array<[string, () => unknown]> = [
+        ["signHash", () => signHash(new Uint8Array(32).fill(9), key)],
+        ["publicKeyFromPrivate", () => publicKeyFromPrivate(key)],
+        [
+          "rawTxInSignature",
+          () => rawTxInSignature(oneInputTx(), 0, subScript, SigHashType.All, key),
+        ],
+        [
+          "signatureScript",
+          () => signatureScript(oneInputTx(), 0, subScript, SigHashType.All, key),
+        ],
+        ["signP2PKHInput", () => signP2PKHInput(oneInputTx(), 0, subScript, key)],
+        [
+          "signP2PKHInputs",
+          () => signP2PKHInputs(oneInputTx(), [{ idx: 0, subScript, privateKey: key }]),
+        ],
+      ];
+      for (const [who, fn] of calls) expect(errorCode(fn), `${who}(${name})`).toBe(code);
+    }
+  });
+
+  test("and 1 and n - 1 still sign, so the bound is not off by one", () => {
+    const h = new Uint8Array(32).fill(9);
+    for (const key of [scalarToBytes(1n), scalarToBytes(CURVE_ORDER - 1n)]) {
+      expect(verifyHash(h, signHash(h, key), publicKeyFromPrivate(key))).toBe(true);
+    }
+    // Non-vacuous the other way: the full script path still runs end to end.
+    const script = signatureScript(oneInputTx(), 0, subScript, SigHashType.All, priv);
+    expect(script.length).toBeGreaterThan(70);
+    expect(scriptParses(script)).toBe(true);
+  });
+});
+
+describe("the mnemonic wrappers keep their own errors", () => {
+  // @scure throws plain Error/TypeError with messages that vary by case — an
+  // unknown word inlines the entire 2048-word list — so these are wrapped rather
+  // than matched on.
+  const phrase = generateMnemonic(128);
+
+  test("strength, entropy size and wordlist size are rejected with their own codes", () => {
+    for (const s of [0, 64, 127, 129, 288]) {
+      expect(errorCode(() => generateMnemonic(s)), `strength ${s}`).toBe("out-of-range");
+    }
+    for (const s of [NaN, 128.5, Infinity]) {
+      expect(errorCode(() => generateMnemonic(s)), `strength ${s}`).toBe("not-an-integer");
+    }
+    for (const n of [15, 17, 18, 33, 0]) {
+      expect(errorCode(() => entropyToMnemonic(new Uint8Array(n))), `entropy ${n}`).toBe(
+        "bad-length",
+      );
+    }
+    // `Wordlist` is readonly string[], so a short list type-checks fine.
+    const short = ["abandon", "ability"];
+    expect(errorCode(() => generateMnemonic(128, short))).toBe("invalid-argument");
+    expect(errorCode(() => entropyToMnemonic(new Uint8Array(16), short))).toBe("invalid-argument");
+    expect(errorCode(() => mnemonicToEntropy(phrase, short))).toBe("invalid-argument");
+    expect(errorCode(() => mnemonicToMasterKey(phrase, networks.mainnet, "", short))).toBe(
+      "invalid-argument",
+    );
+  });
+
+  test("a bad phrase is invalid-mnemonic, whichever way it is bad", () => {
+    const wrongCount = "abandon abandon abandon";
+    const unknownWord = phrase.replace(/^\S+/, "zzzzzz");
+    for (const bad of [wrongCount, unknownWord, ""]) {
+      expect(errorCode(() => mnemonicToEntropy(bad)), JSON.stringify(bad)).toBe("invalid-mnemonic");
+    }
+    // The word count is enforced by @scure even on the unchecked primitive, so
+    // this one is a DcrError too rather than a bare Error.
+    expect(errorCode(() => mnemonicToSeed(wrongCount))).toBe("invalid-mnemonic");
+    // Round-trip still works, so the wrappers are not swallowing valid input.
+    expect(entropyToMnemonic(mnemonicToEntropy(phrase))).toBe(phrase);
+  });
+});
+
 describe("typed errors", () => {
   // The motivating case: a wallet UI needs different copy for a mistyped address
   // than for a right-address-wrong-network paste. Message matching could not tell
@@ -311,6 +413,11 @@ describe("typed errors", () => {
       () => mnemonicToMasterKey("not a mnemonic", networks.mainnet),
       () => calcSignatureHash(subScript, 0x100, oneInputTx(), 0),
       () => new Transaction().addInput({ hash: new Uint8Array(3), index: 0, tree: 0 }),
+      () => signHash(new Uint8Array(32), new Uint8Array(32)),
+      () => publicKeyFromPrivate(new Uint8Array(32)),
+      () => signP2PKHInput(oneInputTx(), 0, subScript, new Uint8Array(32)),
+      () => mnemonicToEntropy("not a mnemonic"),
+      () => new Writer().varInt(1.5),
     ];
     for (const fn of thrown) {
       let caught: unknown;
@@ -333,5 +440,25 @@ describe("typed errors", () => {
     expect(hasErrorCode(undefined, "bad-checksum")).toBe(false);
     expect(hasErrorCode("a string", "bad-checksum")).toBe(false);
     expect(isDcrError(new Error("plain"))).toBe(false);
+    // A look-alike is not a DcrError: the brand is what counts, not the name.
+    const lookAlike = Object.assign(new Error("x"), { name: "DcrError", code: "bad-checksum" });
+    expect(isDcrError(lookAlike)).toBe(false);
+    expect(hasErrorCode(lookAlike, "bad-checksum")).toBe(false);
+  });
+
+  test("the guards accept a DcrError from a second copy of the module", async () => {
+    // A dual ESM+CJS install hands `import` one bundle and `require` the other,
+    // so one process holds two DcrError classes and `instanceof` is false across
+    // them. A query string makes the loader instantiate the module again, which
+    // reproduces exactly that. Built at runtime so `tsc` does not resolve it.
+    const other: typeof import("../src/errors.js") = await import(
+      /* @vite-ignore */ "../src/errors.js" + "?copy=2"
+    );
+    expect(other.DcrError).not.toBe(DcrError);
+    const foreign = other.err("bad-checksum", "decodeWif", "checksum does not match");
+    expect(foreign instanceof DcrError).toBe(false);
+    expect(isDcrError(foreign)).toBe(true);
+    expect(hasErrorCode(foreign, "bad-checksum")).toBe(true);
+    expect(hasErrorCode(foreign, "wrong-network")).toBe(false);
   });
 });

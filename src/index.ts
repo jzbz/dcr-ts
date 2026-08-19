@@ -51,6 +51,7 @@ export {
 // Keys
 export {
   assertCompressedPubKey,
+  assertPrivateKey,
   assertPubKey,
   isValidEd25519PublicKey,
   CURVE_ORDER,

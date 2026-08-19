@@ -87,6 +87,13 @@ describe("Writer varints and growth", () => {
       expect(new Reader(hexToBytes(hex)).varInt(), `read ${hex}`).toBe(v);
     }
     expect(errorCode(() => new Writer().varInt(-1))).toBe("out-of-range");
+    expect(errorCode(() => new Writer().varInt(-1n))).toBe("out-of-range");
+    // A non-integer used to reach `BigInt()` and throw a bare RangeError, which
+    // `errorCode` rejects outright — so this cannot pass on the old code.
+    for (const v of [1.5, -0.5, 1e-3, NaN, Infinity, -Infinity]) {
+      expect(errorCode(() => new Writer().varInt(v)), `varInt(${v})`).toBe("not-an-integer");
+    }
+    expect(bytesToHex(new Writer().varInt(-0).finish())).toBe("00");
   });
 
   test("grows past the initial buffer with the contents intact", () => {

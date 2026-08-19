@@ -91,6 +91,18 @@ export type DcrErrorCode =
   /** A required argument was missing or of the wrong shape. */
   | "invalid-argument";
 
+/**
+ * Identity that survives duplicate copies of this package.
+ *
+ * A dual ESM+CJS build can be loaded twice in one process: Node's exports map
+ * hands `import` the ESM bundle and `require` the CJS one, and bundlers land in
+ * the same place resolving `module` for application code and `main` for a
+ * CommonJS dependency. Each copy defines its own class, so `instanceof` is false
+ * across them. A registry symbol is the same value in every copy, and in every
+ * realm.
+ */
+const BRAND = Symbol.for("dcr-ts.DcrError");
+
 /** Every error this library throws. */
 export class DcrError extends Error {
   override readonly name = "DcrError";
@@ -102,12 +114,18 @@ export class DcrError extends Error {
     options?: { cause?: unknown },
   ) {
     super(message, options);
+    // Not a class field: keeping it off the declared shape keeps the two builds'
+    // `.d.ts` types mutually assignable, and keeps it off `Object.keys`.
+    Object.defineProperty(this, BRAND, { value: true });
   }
 }
 
-/** True when `e` is a {@link DcrError}. */
+/**
+ * True when `e` is a {@link DcrError}, including one thrown by another copy of
+ * this package loaded into the same process.
+ */
 export function isDcrError(e: unknown): e is DcrError {
-  return e instanceof DcrError;
+  return e instanceof DcrError || (typeof e === "object" && e !== null && BRAND in e);
 }
 
 /**
@@ -116,7 +134,7 @@ export function isDcrError(e: unknown): e is DcrError {
  * Safe on an `unknown` from a `catch`, so it needs no type guard at the call site.
  */
 export function hasErrorCode(e: unknown, code: DcrErrorCode): boolean {
-  return e instanceof DcrError && e.code === code;
+  return isDcrError(e) && e.code === code;
 }
 
 /** Construct a {@link DcrError}, prefixing `message` with the operation name. */

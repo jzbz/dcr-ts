@@ -64,6 +64,44 @@ This library has **not** been independently audited. See [SECURITY.md](SECURITY.
   and `calcSignatureHash` rejects a non-integer input index (`NaN` slipped past both
   range checks and produced a hash committing the subScript to no input).
 
+### Fixed — the typed-error contract at foreign boundaries
+
+The contract above held at every one of this library's own `throw` sites, but not
+where a builtin or a dependency threw first. Four boundaries leaked, so a caller
+branching on `hasErrorCode` could not classify the failure.
+
+- **`Writer.varInt` threw a bare `RangeError`.** A non-integer `number` reached
+  `BigInt(v)`, which the engine rejects itself. It is checked first now, with the
+  same `not-an-integer` code `checkUint` already used one screen up.
+- **The signing paths let `@noble`'s own `Error` escape.** `signHash`,
+  `publicKeyFromPrivate`, `rawTxInSignature`, `signatureScript`, `signP2PKHInput`
+  and `signP2PKHInputs` passed a zeroed, over-order or wrong-length private key
+  straight through. They throw `invalid-private-key` or `bad-length` via the new
+  `assertPrivateKey(key, who)`, exported alongside `assertPubKey`. This is a
+  deliberate divergence: dcrd's `secp256k1.PrivKeyFromBytes` cannot fail — it
+  reduces mod n and left-pads a short slice — so a zero key there yields a real
+  DER signature under an all-zero-X public key, and a 31-byte key is silently
+  padded and signed. Rejecting is the safer contract for a signing API.
+- **The mnemonic wrappers let `@scure`'s errors escape.** `generateMnemonic`,
+  `entropyToMnemonic`, `mnemonicToEntropy` and `mnemonicToSeed` now report
+  `out-of-range`/`not-an-integer` for a bad strength, `bad-length` for bad entropy
+  size, `invalid-argument` for a wordlist that is not 2048 words, and
+  `invalid-mnemonic` for the phrase itself. Wrapping also drops `@scure`'s message
+  for an unknown word, which inlined the entire 2048-word list.
+- **`mnemonicToSeed` was documented as unchecked and is not.** `@scure` enforces a
+  word count of 12, 15, 18, 21 or 24 before the PBKDF2, so `mnemonicToSeed("hello")`
+  always threw. Only the checksum and the wordlist go unchecked; the doc comment
+  said "defined for any string" and now says what is actually true.
+
+- **`isDcrError` and `hasErrorCode` no longer depend on class identity.** The dual
+  ESM+CJS build can be loaded twice in one process — Node's exports map hands
+  `import` the ESM bundle and `require` the CJS one, and bundlers land in the same
+  place resolving `module` for application code and `main` for a CommonJS
+  dependency — and `instanceof` is false across the two copies, so
+  `hasErrorCode(e, "bad-checksum")` returned false for an error a CommonJS
+  dependency threw. Both predicates now also accept a `Symbol.for("dcr-ts.DcrError")`
+  brand, which is the same value in every copy and every realm.
+
 ### Fixed — availability
 
 - **base58 decoding is bounded before it runs.** It is quadratic in input length,
@@ -157,6 +195,9 @@ affect you.
 - `mnemonicToMasterKey` throws on an invalid mnemonic.
 - `hardened()`, `derive()`, `Writer.u8/u16/u32`, `Reader.bytes` and
   `calcSignatureHash` throw on input they previously coerced.
+- The signing entry points and `publicKeyFromPrivate` require a 32-byte
+  `Uint8Array`. A hex *string* used to reach `@noble` and sign successfully, off
+  the typed API; it is rejected with `bad-length`.
 
 ### Added — typed errors
 

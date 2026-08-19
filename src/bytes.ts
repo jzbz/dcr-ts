@@ -121,6 +121,12 @@ export class Writer {
 
   /** Compact-size varint. */
   varInt(v: number | bigint): this {
+    // Checked before the conversion, not after: `BigInt(1.5)`, `BigInt(NaN)` and
+    // `BigInt(Infinity)` throw a bare `RangeError` from the engine, which would
+    // escape the typed-error contract every other path in this class honours.
+    if (typeof v === "number" && !Number.isInteger(v)) {
+      throw err("not-an-integer", "Writer.varInt", `expected an integer, got ${v}`);
+    }
     const n = typeof v === "bigint" ? v : BigInt(v);
     if (n < 0n) throw err("out-of-range", "Writer.varInt", "value must not be negative");
     if (n < 0xfdn) return this.u8(Number(n));

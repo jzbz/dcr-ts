@@ -19,8 +19,32 @@ export function isValidPrivateKey(key: Uint8Array): boolean {
   return n > 0n && n < CURVE_ORDER;
 }
 
+/**
+ * Throw unless `key` is a usable secp256k1 private scalar.
+ *
+ * Everything that signs, or turns a private key into a public one, goes through
+ * this. `@noble` checks the same two conditions itself but throws its own plain
+ * `Error`, which escapes the typed-error contract — a caller branching on
+ * `hasErrorCode` cannot classify a zeroed or wrong-length key buffer, which is
+ * exactly the mistake worth classifying.
+ *
+ * Deliberately stricter than dcrd, which cannot express this failure at all:
+ * `secp256k1.PrivKeyFromBytes` reduces mod n and left-pads a short slice, so a
+ * zero key there signs under an all-zero-X public key and a 31-byte key is
+ * silently padded. Rejecting is the safer contract for a signing API.
+ */
+export function assertPrivateKey(key: Uint8Array, who: string): void {
+  if (key.length !== 32) {
+    throw err("bad-length", who, `private key must be 32 bytes, got ${key.length}`);
+  }
+  if (!isValidPrivateKey(key)) {
+    throw err("invalid-private-key", who, "private key is zero, or at or above the group order");
+  }
+}
+
 /** Compressed (33-byte) public key for a private key. */
 export function publicKeyFromPrivate(privateKey: Uint8Array, compressed = true): Uint8Array {
+  assertPrivateKey(privateKey, "publicKeyFromPrivate");
   return secp256k1.getPublicKey(privateKey, compressed);
 }
 
