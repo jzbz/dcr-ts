@@ -64,6 +64,20 @@ This library has **not** been independently audited. See [SECURITY.md](SECURITY.
   and `calcSignatureHash` rejects a non-integer input index (`NaN` slipped past both
   range checks and produced a hash committing the subScript to no input).
 
+- **Ed25519 public keys decode the way dcrd decodes them.** `@noble` enforces the
+  RFC 8032 range `Y < P`; dcrd's `edwards.ParsePubKey` goes through AGL's
+  `edwards25519`, which masks off only the sign bit, so an encoding of `Y+P` names
+  the same point and is accepted. 23 byte strings — every one of them, since `Y+P`
+  must fit in 255 bits, bounding `Y` at 18 — decoded as a valid pay-to-pubkey
+  address in dcrd and threw `invalid-public-key` here, on both the decoder and the
+  encoder. Only acceptance widens; the one encoding dcrd does reject in that
+  range, `X = 0` with the sign bit set, is still rejected. Every such key is the
+  identity, an order-4 point, or a point of unknown discrete log, so no address
+  built from one is spendable — this is a parity fix, not a security one.
+  `@noble/curves` moves to `^1.9.2`, the first release whose types declare the
+  ZIP-215 argument; nothing upgrades, since the installed 1.9.7 already satisfies
+  the old range.
+
 - **`encodeWif` validated nothing about the signature-suite argument.** It went
   straight into the payload byte, and a `Uint8Array` store coerces rather than
   rejects: `256` became suite 0, `-1` became suite 255, `1.5` became suite 1, and

@@ -72,8 +72,18 @@ export function isValidPublicKey(key: Uint8Array): boolean {
 export function isValidEd25519PublicKey(key: Uint8Array): boolean {
   if (key.length !== 32) return false;
   try {
-    ed25519.ExtendedPoint.fromHex(key);
-    return true;
+    // ZIP-215 decoding, because that is what dcrd does. Its `ParsePubKey` goes
+    // through AGL's `edwards25519`, whose `FeFromBytes` masks off only the sign
+    // bit and never rejects a Y at or above the field prime; the reduction to
+    // 0..p-1 happens on the way back out, so the `Y < P` check in `ParsePubKey`
+    // can never fire. `@noble` defaults to the stricter RFC 8032 range, which
+    // rejects 23 encodings dcrd accepts.
+    const point = ed25519.ExtendedPoint.fromHex(key, true);
+    // The one thing dcrd does reject: X = 0 with the sign bit set. Its sign
+    // fix-up is `x.Sub(curve.P, x)`, which for X = 0 yields exactly P and then
+    // trips the `X < P` check. `@noble` applies the same rule, but only when
+    // ZIP-215 decoding is off, so it has to be restated here.
+    return !(point.toAffine().x === 0n && (key[31]! & 0x80) !== 0);
   } catch {
     return false;
   }

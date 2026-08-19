@@ -65,6 +65,8 @@ export interface DcrdVectors {
   hashes: Array<{ input: string; blake256: string; blake256d: string; hash160: string }>;
   sanity: Record<string, string>;
   base58: Array<{ input: string; base58: string; base58check: string }>;
+  /** Mainnet pay-to-pubkey addresses for Ed25519 keys, with dcrd's verdict. */
+  ed25519Keys: EdKeyVec[];
   keys: {
     privHex: string;
     pubkeyCompressed: string;
@@ -198,6 +200,17 @@ export interface WifVec {
   /** Ed25519 uses its own scalar; a secp256k1 key is not in the Edwards subgroup. */
   wif_ed25519: string;
   wif_ed25519_payload: string;
+}
+
+/**
+ * An Ed25519 public key and dcrd's verdict on the pay-to-pubkey address built
+ * from it, covering the encodings where a stricter decoder would disagree.
+ */
+export interface EdKeyVec {
+  label: string;
+  key: string;
+  addr: string;
+  valid: boolean;
 }
 
 export interface AddrVec {

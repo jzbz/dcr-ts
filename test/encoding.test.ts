@@ -20,7 +20,7 @@ import {
   pubKeyHashSchnorrAddress,
   scriptHashAddress,
 } from "../src/address.js";
-import { isValidPublicKey, scalarToBytes } from "../src/keys.js";
+import { isValidEd25519PublicKey, isValidPublicKey, scalarToBytes } from "../src/keys.js";
 import { blake256, hash160 } from "../src/hash.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
 import { bytesToHex, hexToBytes, nonEmpty, vectors, errorCode } from "./helpers.js";
@@ -219,13 +219,59 @@ describe("addresses", () => {
     bad[0] = networks.mainnet.pubKeyAddrId[0];
     bad[1] = networks.mainnet.pubKeyAddrId[1];
     bad[2] = 1; // Ed25519
-    bad.fill(0xff, 3); // not a valid Edwards point
+    // Y = 2, for which (y^2-1)/(dy^2+1) is not a square, so no X exists — dcrd
+    // rejects it with "point not on curve" for either sign bit. Filling the key
+    // with 0xff would not do: that is Y = 2^255-1, which reduces to the perfectly
+    // good point Y = 18 and is accepted by dcrd (see the ed25519Keys vectors).
+    bad[3] = 2;
     const addr = checkEncode(bad);
     expect(errorCode(() => decodeAddress(addr))).toBe("invalid-public-key");
     expect(isValidAddress(addr)).toBe(false);
     // And an unknown suite byte is still rejected.
     bad[2] = 7;
     expect(errorCode(() => decodeAddress(checkEncode(bad)))).toBe("unsupported-signature-type");
+  });
+
+  test("Ed25519 keys are accepted exactly where dcrd accepts them", () => {
+    // dcrd decodes the key through AGL's edwards25519, which masks off only the
+    // sign bit, so an encoding of Y+P names the same point as Y and is accepted;
+    // the one rejection in that range is X = 0 with the sign bit set, where
+    // dcrd's sign fix-up produces exactly P. The fixture enumerates the entire
+    // range where a stricter decoder can disagree (Y+P must fit in 255 bits, so
+    // Y <= 18), with both sign bits, plus two ordinary keys.
+    let accepted = 0;
+    let refused = 0;
+    for (const v of nonEmpty(vectors.ed25519Keys, "ed25519Keys")) {
+      const key = hexToBytes(v.key);
+      expect(isValidEd25519PublicKey(key), `${v.label} ${v.key}`).toBe(v.valid);
+      expect(isValidAddress(v.addr, networks.mainnet), `${v.label} address`).toBe(v.valid);
+      if (v.valid) {
+        accepted++;
+        const d = decodeAddress(v.addr, networks.mainnet);
+        expect(d.kind, v.label).toBe("pubkey-ed25519");
+        if (d.kind !== "pubkey-ed25519") throw new Error("unreachable");
+        expect(bytesToHex(d.pubKey), `${v.label} round trip`).toBe(v.key);
+        // The encoder shares the same check, so it must agree with the decoder.
+        expect(pubKeyEd25519Address(key, networks.mainnet), `${v.label} encode`).toBe(v.addr);
+      } else {
+        refused++;
+        expect(errorCode(() => decodeAddress(v.addr, networks.mainnet)), v.label).toBe(
+          "invalid-public-key",
+        );
+        expect(
+          errorCode(() => pubKeyEd25519Address(key, networks.mainnet)),
+          `${v.label} encode`,
+        ).toBe("invalid-public-key");
+      }
+    }
+    // Neither branch is vacuous, and the accepted set really does include the
+    // non-canonical encodings: 23 of them are on the curve.
+    expect(accepted, "accepted").toBe(48);
+    expect(refused, "refused").toBe(30);
+    expect(
+      vectors.ed25519Keys.filter((v) => v.valid && v.label.includes("+P")).length,
+      "accepted non-canonical",
+    ).toBe(23);
   });
 
   test("address encoders reject anything that is not a real public key", () => {

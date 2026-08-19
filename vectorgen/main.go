@@ -289,6 +289,61 @@ func main() {
 	keyOut["wif"] = wifs
 	out["keys"] = keyOut
 
+	// ---- Ed25519 pay-to-pubkey key acceptance ----
+	// dcrd validates the 32-byte payload with edwards.ParsePubKey, which decodes
+	// through AGL's edwards25519: FeFromBytes masks off only the sign bit and
+	// never rejects a Y at or above the field prime, and the reduction back to
+	// 0..P-1 happens before ParsePubKey's Y < P check could fire. So an encoding
+	// of Y+P names the same point as Y and is accepted. Y+P still has to fit in
+	// 255 bits, which bounds Y at 18 -- enumerating 0..18 with both sign bits
+	// therefore covers every encoding on which a stricter (RFC 8032) decoder can
+	// disagree with dcrd. The one rejection in that range is X = 0 with the sign
+	// bit set, where ParsePubKey's sign fix-up computes P-X = P and trips its
+	// X < P check. Mainnet only: the rule belongs to the payload, not the prefix.
+	edKeys := []map[string]interface{}{}
+	edNet := nets["mainnet"]
+	addEdKey := func(label string, key []byte) {
+		data := append([]byte{byte(dcrec.STEd25519)}, key...)
+		addr := base58.CheckEncode(data, edNet.AddrIDPubKeyV0())
+		_, err := stdaddr.DecodeAddressV0(addr, edNet)
+		edKeys = append(edKeys, map[string]interface{}{
+			"label": label,
+			"key":   hx(key),
+			"addr":  addr,
+			"valid": err == nil,
+		})
+	}
+	for y := 0; y <= 18; y++ {
+		canonical := make([]byte, 32)
+		canonical[0] = byte(y)
+		// Y+P in little endian. P is ed ff .. ff 7f, and 0xed+y cannot carry for
+		// y <= 18, so the whole value is one byte away from P itself.
+		nonCanonical := make([]byte, 32)
+		for i := range nonCanonical {
+			nonCanonical[i] = 0xff
+		}
+		nonCanonical[0] = 0xed + byte(y)
+		nonCanonical[31] = 0x7f
+		for _, k := range []struct {
+			label string
+			key   []byte
+		}{
+			{fmt.Sprintf("y=%d", y), canonical},
+			{fmt.Sprintf("y=%d+P", y), nonCanonical},
+		} {
+			addEdKey(k.label, k.key)
+			signed := make([]byte, 32)
+			copy(signed, k.key)
+			signed[31] |= 0x80
+			addEdKey(k.label+" sign", signed)
+		}
+	}
+	// Two ordinary keys, so the vectors are not all edge cases: the curve's base
+	// point and the key behind the pay-to-pubkey address vectors above.
+	addEdKey("basepoint", mustHex("5866666666666666666666666666666666666666666666666666666666666666"))
+	addEdKey("test key", edPubKey.Serialize())
+	out["ed25519Keys"] = edKeys
+
 	// ---- HD keys (BIP32 Decred) ----
 	mp0 := chaincfg.MainNetParams()
 	seed := mustHex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")

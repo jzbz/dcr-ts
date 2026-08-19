@@ -31,6 +31,476 @@
       "input": "00010966776006953d5567439e5e39f86a0d273beed61967f6"
     }
   ],
+  "ed25519Keys": [
+    {
+      "addr": "DkM4RLnCW1BQrUT1pkcL1vq9sdYDw49w7Vn5VmakrxbQLfuqA6fFo",
+      "key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=0",
+      "valid": true
+    },
+    {
+      "addr": "DkM4RLnCW1BQrUT1pkcL1vq9sdYDw49w7Vn5VmakrxbQLgALbPYVM",
+      "key": "0000000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=0 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6EAArNwTugivgAm2k2KSj2Q1rSdtgyU4E8fc8Xs1YwTwzzYTMu",
+      "key": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=0+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6EAArNwTugivgAm2k2KSj2Q1rSdtgyU4E8fc8Xs1YwUCRv1hJt",
+      "key": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=0+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4RnKjNBA24rvutjdtmo8MxJEJiWNYPYhGk4NaUTa3RCp4ePCnk",
+      "key": "0100000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=1",
+      "valid": true
+    },
+    {
+      "addr": "DkM4RnKjNBA24rvutjdtmo8MxJEJiWNYPYhGk4NaUTa3RD4ZeNUyE",
+      "key": "0100000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=1 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6EbiPF7SWu7QaEk4JnBjw74hwE67JFWyRNxPx9MzC1zr8Q1V3G",
+      "key": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=1+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6EbiPF7SWu7QaEk4JnBjw74hwE67JFWyRNxPx9MzC216cqfoYd",
+      "key": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=1+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4SDsGEM8dHFQoxifTXfRa2xvPVxb9fbcTzMAQ5xYgVjiLshx6z",
+      "key": "0200000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=2",
+      "valid": false
+    },
+    {
+      "addr": "DkM4SDsGEM8dHFQoxifTXfRa2xvPVxb9fbcTzMAQ5xYgVjxiQAioE",
+      "key": "0200000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=2 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6F3Fv7HR87VtUJj5sY439BjQ21YKuXZtcdFBmkrxq6XkQks3Eu",
+      "key": "efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=2+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6F3Fv7HR87VtUJj5sY439BjQ21YKuXZtcdFBmkrxq6XztxA2T8",
+      "key": "efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=2+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4SfQo6X7EVdti2hh2HXin7dcUHQokweXfEdxDhTXKaGcYaLG1E",
+      "key": "0300000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=3",
+      "valid": true
+    },
+    {
+      "addr": "DkM4SfQo6X7EVdti2hh2HXin7dcUHQokweXfEdxDhTXKaGrvdJKYT",
+      "key": "0300000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=3 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6FUoSyTPjKtNNNi7SHvLMGQ66nzYWocoosXybNMwUB4eaRx8W8",
+      "key": "f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=3+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6FUoSyTPjKtNNNi7SHvLMGQ66nzYWocoosXybNMwUB4u479Pxo",
+      "key": "f0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=3+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4T6xKxh5qi2Nc6gib3Q1zCJJZ4s2NDhSrUvk3JxVxeoWidkJc1",
+      "key": "0400000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=4",
+      "valid": true
+    },
+    {
+      "addr": "DkM4T6xKxh5qi2Nc6gib3Q1zCJJZ4s2NDhSrUvk3JxVxeomBsyhYi",
+      "key": "0400000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=4 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6FvLyqdNLYGrGSh913ndZM4nBaSm85fj17pmQyrv7FbYrFQJDL",
+      "key": "f1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=4+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6FvLyqdNLYGrGSh913ndZM4nBaSm85fj17pmQyrv7FboGUQw19",
+      "key": "f1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=4+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4TYVrps4SvQrWAfk9oGKCGxzdrKEyVkN3jDXrvTUbjLQxCYYz1",
+      "key": "0500000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=5",
+      "valid": true
+    },
+    {
+      "addr": "DkM4TYVrps4SvQrWAfk9oGKCGxzdrKEyVkN3jDXrvTUbjLfQvp2KD",
+      "key": "0500000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=5 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6GMtWhoLwkfLAWgAZoevmRjUGMtyjMieCN7ZEbMtkL8T2HJ8bt",
+      "key": "f2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=5+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6GMtWhoLwkfLAWgAZoevmRjUGMtyjMieCN7ZEbMtkL8hUwBDpy",
+      "key": "f2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=5+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4Tz3Ph3348oLQEemiZ8cQMdgidmTamoHEyWKgXxTEosKDn5kXD",
+      "key": "0600000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=6",
+      "valid": true
+    },
+    {
+      "addr": "DkM4Tz3Ph3348oLQEemiZ8cQMdgidmTamoHEyWKgXxTEosZcgbba8",
+      "key": "0600000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=6 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6GoS3ZyKYy3p4afC8ZXDyWQAM9MCLdmZPcQM4CrsPQfMGCzq2Z",
+      "key": "f3ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=6+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6GoS3ZyKYy3p4afC8ZXDyWQAM9MCLdmZPcQM4CrsPQfbiAWAPa",
+      "key": "f3ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=6+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4URavZD1fMBpJJdoHJzucSJNoRDgC3rCSDo7W9TRstQDQm34T3",
+      "key": "0700000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=7",
+      "valid": false
+    },
+    {
+      "addr": "DkM4URavZD1fMBpJJdoHJzucSJNoRDgC3rCSDo7W9TRstQTqqN6VH",
+      "key": "0700000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=7 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6HEyaS9JABSHxeeDhKPXBb4rRvoQwupUarh8spMr2VCFWkj93V",
+      "key": "f4ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=7+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6HEyaS9JABSHxeeDhKPXBb4rRvoQwupUarh8spMr2VCVy8R2sS",
+      "key": "f4ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=7+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4Us8TRNzGZaJCNcpr4sCpWy4tCftoKu7dU5uKkxQWxw7hY1dsU",
+      "key": "0800000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=8",
+      "valid": false
+    },
+    {
+      "addr": "DkM4Us8TRNzGZaJCNcpr4sCpWy4tCftoKu7dU5uKkxQWxwN6iBt6e",
+      "key": "0800000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=8 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6HgX7JKGmPpmridFG5FpPfjYWiFdZBsPn6yvhRrpfZj9h4vNCb",
+      "key": "f5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=8+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6HgX7JKGmPpmridFG5FpPfjYWiFdZBsPn6yvhRrpfZjQBsNJV4",
+      "key": "f5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=8+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4VJfzHYxsmxn6SbrQpjW2bdkxz87Qbx2piNh9NTPA3U1uy4jpe",
+      "key": "0900000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=9",
+      "valid": true
+    },
+    {
+      "addr": "DkM4VJfzHYxsmxn6SbrQpjW2bdkxz87Qbx2piNh9NTPA3UGJZ4RuR",
+      "key": "0900000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=9 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6J84eAVFNcDFkncGpq87bkQEbVhrATvJyMGiX3MoJeG3viBJbh",
+      "key": "f6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=9+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6J84eAVFNcDFkncGpq87bkQEbVhrATvJyMGiX3MoJeGJNMB4P9",
+      "key": "f6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=9+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4VkDX9iwUzMFzWasyaboEgJT3maL1szx1xfUxyxMo7zv6YnyXn",
+      "key": "0a00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=10",
+      "valid": true
+    },
+    {
+      "addr": "DkM4VkDX9iwUzMFzWasyaboEgJT3maL1szx1xfUxyxMo81AYZGN6E",
+      "key": "0a00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=10 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6JZcB2fDypbjerbJPazQoq4vgHA4mjyEAbZWLermwinxBL2KbC",
+      "key": "f7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=10+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6JZcB2fDypbjerbJPazQoq4vgHA4mjyEAbZWLermwioCcS1F4k",
+      "key": "f7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=10+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4WBm41tv6CjjtaZuYLU6Sky98Z2YdA3sDCxGnbTLSCXpJBTSEe",
+      "key": "0b00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=11",
+      "valid": false
+    },
+    {
+      "addr": "DkM4WBm41tv6CjjtaZuYLU6Sky98Z2YdA3sDCxGnbTLSCY4jA8Ec8",
+      "key": "0b00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=11 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6K19htqCb2zDYvaKxLri1ujcm4cHP229MqrJAGMkaoKrMyv4Qe",
+      "key": "f8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=11+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6K19htqCb2zDYvaKxLri1ujcm4cHP229MqrJAGMkaoL6rjovrk",
+      "key": "f8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=11+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4WdJat4thR8DneYw76LPeqdqDLUmES6nQTF4cCxK5H4ia854rU",
+      "key": "0c00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=12",
+      "valid": false
+    },
+    {
+      "addr": "DkM4WdJat4thR8DneYw76LPeqdqDLUmES6nQTF4cCxK5H4xwotjsv",
+      "key": "0c00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=12 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6KShEm1BCFNhSzZMX6j1DzQJqr4VzJ54Z695ysrjDsrkcfvwPg",
+      "key": "f9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=12+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6KShEm1BCFNhSzZMX6j1DzQJqr4VzJ54Z695ysrjDss13R1Ayd",
+      "key": "f9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=12+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4X4r7kEsJdWhgiXxfrCgrvJXJ7vyqi9hbhXrRpTHiMbchSGJ9p",
+      "key": "0d00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=13",
+      "valid": false
+    },
+    {
+      "addr": "DkM4X4r7kEsJdWhgiXxfrCgrvJXJ7vyqi9hbhXrRpTHiMbsErUf37",
+      "key": "0d00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=13 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6KtEmdB9oTmBM4YP5rbJS54zvdWiba7ykLRsoVMhrxPeqGek7w",
+      "key": "faffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=13+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6KtEmdB9oTmBM4YP5rbJS54zvdWiba7ykLRsoVMhrxPuGQsMAg",
+      "key": "faffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=13+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4XWPecQququBanWzEc4z4zyDNuPCSzCcnwpeFRxGMS8WybkMSC",
+      "key": "0e00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=14",
+      "valid": true
+    },
+    {
+      "addr": "DkM4XWPecQququBanWzEc4z4zyDNuPCSzCcnwpeFRxGMS8mTBTmcq",
+      "key": "0e00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=14 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6LKnJVM8Qg9fF8XQecTbe9jh1QxwCrAtwaifd6rgW2vZ79vTos",
+      "key": "fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=14+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6LKnJVM8Qg9fF8XQecTbe9jh1QxwCrAtwaifd6rgW2voT27pva",
+      "key": "fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=14+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4XwwBUapX4HfUrW1oMwHH5duTgqR4GFXzC7S53TEzWfR9uLsCL",
+      "key": "0f00000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=15",
+      "valid": true
+    },
+    {
+      "addr": "DkM4XwwBUapX4HfUrW1oMwHH5duTgqR4GFXzC7S53TEzWffdyYrt3",
+      "key": "0f00000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=15 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6LmKqMX71tY99CWSDNKtrEQP6CR9p8Dp8q1TSiMf97TTJ38K4C",
+      "key": "fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=15+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6LmKqMX71tY99CWSDNKtrEQP6CR9p8Dp8q1TSiMf97ThhtYrsz",
+      "key": "fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=15+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4YPUiLko8Gg9NvV3N7oaVAJbYUHdfYJTBSQDtexDdbCKTFS4Qk",
+      "key": "1000000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=16",
+      "valid": true
+    },
+    {
+      "addr": "DkM4YPUiLko8Gg9NvV3N7oaVAJbYUHdfYJTBSQDtexDdbCZrPL55j",
+      "key": "1000000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=16 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6MCsNDh5d6vd3GVTn8CC4K55AysNRQGjL5JFGKrdnBzMWV74VX",
+      "key": "fdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=16+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6MCsNDh5d6vd3GVTn8CC4K55AysNRQGjL5JFGKrdnBzbxBckbe",
+      "key": "fdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=16+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM4Yq2FCvmjV4dGzU4vsfshEyHdFjrGpMNNgh1iGTCGfjDgePEBX",
+      "key": "1100000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=17",
+      "valid": false
+    },
+    {
+      "addr": "DkM4Yq2FCvmjV4dGzU4vsfshEyHdFjrGpMNNgh1iGTCGfjU42u46K",
+      "key": "1100000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=17 sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM6MeQu5s4EKK6wLUVLt4VGPjmFmKb2gKeXKb35wMcRGXFfxtBpu",
+      "key": "feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=17+P",
+      "valid": false
+    },
+    {
+      "addr": "DkM6MeQu5s4EKK6wLUVLt4VGPjmFmKb2gKeXKb35wMcRGXW79ZyuP",
+      "key": "feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=17+P sign",
+      "valid": false
+    },
+    {
+      "addr": "DkM4ZGZn56kLhT7B4T6VdYAuKdyi3C4t6QHZvyoXsxAukG7rPsMT2",
+      "key": "1200000000000000000000000000000000000000000000000000000000000000",
+      "label": "y=18",
+      "valid": true
+    },
+    {
+      "addr": "DkM4ZGZn56kLhT7B4T6VdYAuKdyi3C4t6QHZvyoXsxAukGNGEuq1z",
+      "key": "1200000000000000000000000000000000000000000000000000000000000080",
+      "label": "y=18 sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM6N5xRx32qXhaqQTWudvnUUQTLYmodxNZiZspuYrb4M49za6b57",
+      "key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "label": "y=18+P",
+      "valid": true
+    },
+    {
+      "addr": "DkM6N5xRx32qXhaqQTWudvnUUQTLYmodxNZiZspuYrb4M4QQhsrdY",
+      "key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "label": "y=18+P sign",
+      "valid": true
+    },
+    {
+      "addr": "DkM56GqeAorgXwNNhGbTGzFxzCdWopAuB9Fcsm28AivKFNJcaTotg",
+      "key": "5866666666666666666666666666666666666666666666666666666666666666",
+      "label": "basepoint",
+      "valid": true
+    },
+    {
+      "addr": "DkM4Yew6ttXrbdySknoi4AEo3QMrwesTLMuUd8n2WKJKVE4N2S9yW",
+      "key": "109ae404be4fc34efc858a6319ce71f348e41f6a90bfb7f42b28c1c10f920daa",
+      "label": "test key",
+      "valid": true
+    }
+  ],
   "hashes": [
     {
       "input": "",
