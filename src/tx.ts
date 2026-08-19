@@ -76,6 +76,32 @@ function toHex(bytes: Uint8Array): string {
   return s;
 }
 
+/**
+ * Pack the 32-bit version word: serialization type in the high 16 bits, the
+ * transaction version in the low 16. Shared with the signature hash, whose
+ * serialization types are its own (see sighash.ts).
+ *
+ * The version is range-checked rather than only masked, for the reason
+ * `checkUint` gives in bytes.ts: `& 0xffff` quietly turns 65537 into 1, -1 into
+ * 65535 and `NaN` into 0, so the caller would get bytes — and a txid, and a
+ * signature — for a version they never asked for. The other 16-bit field in this
+ * serializer, `TxOutput.version`, already throws on exactly these inputs, since
+ * `writePrefixBody` writes it with `Writer.u16`. dcrd cannot express the case at
+ * all: `wire.MsgTx.Version` is a uint16, and the high half of this word is the
+ * serialization type — which is also why the mask cannot simply be dropped, as an
+ * out-of-range version would then corrupt the serialization type.
+ */
+export function packVersion(version: number, serType: number): number {
+  if (!Number.isInteger(version) || version < 0 || version > 0xffff) {
+    throw err(
+      Number.isInteger(version) ? "out-of-range" : "not-an-integer",
+      "tx.version",
+      `expected an integer in 0..2^16-1, got ${version}`,
+    );
+  }
+  return ((serType << 16) | version) >>> 0;
+}
+
 /** A mutable Decred transaction. */
 export class Transaction {
   version = DEFAULT_TX_VERSION;
@@ -140,7 +166,7 @@ export class Transaction {
   }
 
   private writeVersion(w: Writer, serType: TxSerializeType): void {
-    w.u32(((serType << 16) | (this.version & 0xffff)) >>> 0);
+    w.u32(packVersion(this.version, serType));
   }
 
   private writePrefixBody(w: Writer): void {

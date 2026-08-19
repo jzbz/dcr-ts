@@ -64,6 +64,18 @@ This library has **not** been independently audited. See [SECURITY.md](SECURITY.
   and `calcSignatureHash` rejects a non-integer input index (`NaN` slipped past both
   range checks and produced a hash committing the subScript to no input).
 
+- **`Transaction.version` was masked to 16 bits instead of range-checked.**
+  `serialize()` packed it as `(serType << 16) | (version & 0xffff)`, so 65537
+  serialized as version 1, -1 as 65535 and `NaN` as 0 — and the txid and every
+  signature committed to a version the caller never asked for, with nothing
+  raising. The same mask sat in both signature-hash words, so `calcSignatureHash`
+  could sign a silently-wrong version without `serialize()` ever being called.
+  All three now go through one guard. `TxOutput.version`, the other 16-bit field
+  in the same serializer, has always thrown on these inputs via `Writer.u16`.
+  dcrd cannot express the case at all — `wire.MsgTx.Version` is a uint16 — so no
+  byte changes for any legal version. Decoding stays permissive, matching dcrd's
+  own `uint16(version & 0xffff)`.
+
 ### Fixed — the typed-error contract at foreign boundaries
 
 The contract above held at every one of this library's own `throw` sites, but not

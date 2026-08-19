@@ -14,7 +14,7 @@ import { err } from "./errors.js";
 import { blake256 } from "./hash.js";
 import { Writer } from "./bytes.js";
 import { scriptParses } from "./script.js";
-import type { Transaction } from "./tx.js";
+import { packVersion, type Transaction } from "./tx.js";
 
 export enum SigHashType {
   All = 0x01,
@@ -158,7 +158,7 @@ export function calcSignatureHash(
     prefixHash = cachedPrefix;
   } else {
     const pw = new Writer();
-    pw.u32(((tx.version & 0xffff) | (SIG_HASH_SERIALIZE_PREFIX << 16)) >>> 0);
+    pw.u32(packVersion(tx.version, SIG_HASH_SERIALIZE_PREFIX));
 
     pw.varInt(inputs.length);
     for (let i = 0; i < inputs.length; i++) {
@@ -193,7 +193,7 @@ export function calcSignatureHash(
 
   // ---- Witness hash ----
   const ww = new Writer();
-  ww.u32(((tx.version & 0xffff) | (SIG_HASH_SERIALIZE_WITNESS << 16)) >>> 0);
+  ww.u32(packVersion(tx.version, SIG_HASH_SERIALIZE_WITNESS));
   ww.varInt(inputs.length);
   for (let i = 0; i < inputs.length; i++) {
     // Only the signed input commits to the sub script; the rest commit to nil.

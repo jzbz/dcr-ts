@@ -389,3 +389,68 @@ describe("signing", () => {
     expect(bytesToHex(tx.inputs[0]!.signatureScript)).toBe(vectors.tx.sigScript);
   });
 });
+
+describe("transaction version range", () => {
+  // The version word packs the serialization type in its high 16 bits, so an
+  // out-of-range version used to be masked into it: 65537 serialized as version
+  // 1, NaN as 0, and the txid and every signature committed to a version the
+  // caller never asked for. TxOutput.version, the other 16-bit field in this
+  // serializer, has always thrown on the same inputs via Writer.u16.
+  const badRange = [65536, 65537, -1, 0x10000000];
+  const badKind = [NaN, 1.5, Infinity];
+
+  test("serialization rejects a version outside 0..0xffff", () => {
+    for (const v of badRange) {
+      const { tx } = buildFixtureTx();
+      tx.version = v;
+      expect(errorCode(() => tx.serialize()), `serialize ${v}`).toBe("out-of-range");
+      expect(errorCode(() => tx.serializePrefix()), `prefix ${v}`).toBe("out-of-range");
+      expect(errorCode(() => tx.serializeWitness()), `witness ${v}`).toBe("out-of-range");
+      expect(errorCode(() => tx.txid()), `txid ${v}`).toBe("out-of-range");
+      expect(errorCode(() => tx.fullTxid()), `fullTxid ${v}`).toBe("out-of-range");
+    }
+    for (const v of badKind) {
+      const { tx } = buildFixtureTx();
+      tx.version = v;
+      expect(errorCode(() => tx.serialize()), `serialize ${v}`).toBe("not-an-integer");
+    }
+  });
+
+  test("the signature hash rejects it too, cached prefix or not", () => {
+    for (const v of badRange) {
+      const { tx, subScript } = buildFixtureTx();
+      tx.version = v;
+      expect(errorCode(() => calcSignatureHash(subScript, SigHashType.All, tx, 0))).toBe(
+        "out-of-range",
+      );
+      // The prefix word is skipped when a cached prefix is supplied; the witness
+      // word is not, so the check cannot be bypassed that way.
+      expect(
+        errorCode(() =>
+          calcSignatureHash(subScript, SigHashType.All, tx, 0, new Uint8Array(32)),
+        ),
+      ).toBe("out-of-range");
+    }
+    for (const v of badKind) {
+      const { tx, subScript } = buildFixtureTx();
+      tx.version = v;
+      expect(errorCode(() => calcSignatureHash(subScript, SigHashType.All, tx, 0))).toBe(
+        "not-an-integer",
+      );
+    }
+  });
+
+  test("every in-range version still serializes to the same word as before", () => {
+    // Not a regression detector — it passes either way. It pins the property that
+    // actually matters: the guard moves no wire bytes for any legal version.
+    for (const v of [0, 1, 2, 0x1234, 0xfffe, 0xffff]) {
+      const { tx } = buildFixtureTx();
+      tx.version = v;
+      const wordOf = (b: Uint8Array): number =>
+        new DataView(b.buffer, b.byteOffset).getUint32(0, true);
+      expect(wordOf(tx.serialize()), `full v=${v}`).toBe(((0 << 16) | (v & 0xffff)) >>> 0);
+      expect(wordOf(tx.serializePrefix()), `prefix v=${v}`).toBe(((1 << 16) | (v & 0xffff)) >>> 0);
+      expect(wordOf(tx.serializeWitness()), `witness v=${v}`).toBe(((2 << 16) | (v & 0xffff)) >>> 0);
+    }
+  });
+});
