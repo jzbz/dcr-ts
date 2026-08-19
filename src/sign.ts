@@ -6,6 +6,7 @@
  * signature script for a P2PKH input is `<DER-sig ‖ hashType> <pubkey>`.
  */
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { err } from "./errors.js";
 import { assertPrivateKey, publicKeyFromPrivate } from "./keys.js";
 import { pushData } from "./script.js";
 import {
@@ -16,8 +17,34 @@ import {
 } from "./sighash.js";
 import type { Transaction } from "./tx.js";
 
+/**
+ * Throw unless `hash` is exactly 32 bytes.
+ *
+ * Both `@noble` and dcrd reduce the hash to a scalar with no length check, and
+ * they agree byte-for-byte on what that produces — so this is not a divergence
+ * in the signatures either side emits, it is a hazard both share. It bites
+ * because the reduction is not injective:
+ *
+ * - a short hash signs identically to itself left-padded with zeros to 32 bytes
+ *   (`sign(h31)` and `sign(0x00 ‖ h31)` are the same DER bytes), and
+ * - a long hash is silently truncated to its first 32 bytes.
+ *
+ * So a caller who passes a mis-sliced buffer gets a valid signature committing
+ * to a *different* message than the one they hold, with nothing raising. dcrd
+ * needs no guard because its type system is the guard: `chainhash.Hash` is
+ * `[32]byte` and the only thing that ever reaches `ecdsa.Sign` is a BLAKE-256
+ * output. A `Uint8Array` carries no length in its type, so the check is explicit
+ * here — the same reason {@link assertPrivateKey} exists.
+ */
+function assertHash32(hash: Uint8Array, who: string): void {
+  if (hash.length !== 32) {
+    throw err("bad-length", who, `signature hash must be 32 bytes, got ${hash.length}`);
+  }
+}
+
 /** DER-encode a deterministic low-S ECDSA signature over a 32-byte hash. */
 export function signHash(hash: Uint8Array, privateKey: Uint8Array): Uint8Array {
+  assertHash32(hash, "signHash");
   assertPrivateKey(privateKey, "signHash");
   const sig = secp256k1.sign(hash, privateKey, { lowS: true });
   return sig.toDERRawBytes();
@@ -37,6 +64,11 @@ export function verifyHash(
   derSignature: Uint8Array,
   publicKey: Uint8Array,
 ): boolean {
+  // Before the try, and thrown rather than returned as `false`: a wrong-length
+  // hash is a caller bug, not a failed verification, and `false` would hide the
+  // one case that matters — a 31-byte hash verifies against a signature over its
+  // zero-padded 32-byte form, so `true` here would attest to the wrong message.
+  assertHash32(hash, "verifyHash");
   try {
     const sig = secp256k1.Signature.fromDER(derSignature);
     // Require the *canonical* DER encoding, matching dcrd's

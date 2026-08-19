@@ -129,6 +129,19 @@ branching on `hasErrorCode` could not classify the failure.
 - **`Writer.varInt` threw a bare `RangeError`.** A non-integer `number` reached
   `BigInt(v)`, which the engine rejects itself. It is checked first now, with the
   same `not-an-integer` code `checkUint` already used one screen up.
+- **`signHash` and `verifyHash` accepted a hash of any length, and scalar
+  reduction is not injective.** A short hash signs identically to itself
+  left-padded with zeros to 32 bytes — `signHash(h31)` and
+  `signHash(0x00 ‖ h31)` are the same DER bytes — and a long hash is silently
+  truncated to its first 32. A caller passing a mis-sliced buffer got a valid
+  signature committing to a *different* message than the one they held, with
+  nothing raising, and `verifyHash` returned `true` for the short form against a
+  signature over the padded one. Both now require exactly 32 bytes. `@noble` and
+  dcrd agree byte-for-byte on every one of these malformed cases, so this is not
+  a behavioural divergence but a hazard both share; dcrd needs no guard because
+  `chainhash.Hash` is `[32]byte` and the only thing reaching `ecdsa.Sign` is a
+  BLAKE-256 output, whereas a `Uint8Array` carries no length in its type.
+
 - **The signing paths let `@noble`'s own `Error` escape.** `signHash`,
   `publicKeyFromPrivate`, `rawTxInSignature`, `signatureScript`, `signP2PKHInput`
   and `signP2PKHInputs` passed a zeroed, over-order or wrong-length private key

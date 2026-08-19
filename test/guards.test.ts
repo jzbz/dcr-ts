@@ -33,7 +33,7 @@ import { payToPubKeyHashScript, scriptParses } from "../src/script.js";
 import { CURVE_ORDER, publicKeyFromPrivate, scalarToBytes } from "../src/keys.js";
 import { Transaction, TxTree } from "../src/tx.js";
 import { Writer } from "../src/bytes.js";
-import { hexToBytes, vectors, errorCode } from "./helpers.js";
+import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 const priv = hexToBytes(vectors.keys.privHex);
 const pkh = hexToBytes(vectors.keys.pubkeyHash160);
@@ -341,6 +341,47 @@ describe("every private-key entry point rejects an unusable key", () => {
     const script = signatureScript(oneInputTx(), 0, subScript, SigHashType.All, priv);
     expect(script.length).toBeGreaterThan(70);
     expect(scriptParses(script)).toBe(true);
+  });
+});
+
+describe("the signature hash must be exactly 32 bytes", () => {
+  // Scalar reduction is not injective, and neither @noble nor dcrd checks the
+  // length — they agree byte-for-byte on what the malformed cases produce, which
+  // is why this is a shared hazard rather than a divergence. dcrd needs no guard
+  // because chainhash.Hash is [32]byte; a Uint8Array carries no length.
+  const h32 = new Uint8Array(32).fill(9);
+
+  test("a wrong-length hash is refused by both signHash and verifyHash", () => {
+    for (const n of [0, 1, 31, 33, 64]) {
+      const h = new Uint8Array(n).fill(9);
+      expect(errorCode(() => signHash(h, priv)), `signHash ${n}`).toBe("bad-length");
+      expect(
+        errorCode(() => verifyHash(h, signHash(h32, priv), publicKeyFromPrivate(priv))),
+        `verifyHash ${n}`,
+      ).toBe("bad-length");
+    }
+    // The 32-byte case is unaffected, and still round-trips.
+    expect(verifyHash(h32, signHash(h32, priv), publicKeyFromPrivate(priv))).toBe(true);
+  });
+
+  test("the guard closes two collisions, not just a length mismatch", () => {
+    // Reverting it brings both of these back, and they are the actual defect:
+    // the caller holds one byte string and the signature commits to another.
+    const h31 = new Uint8Array(31).fill(9);
+    const padLeft = new Uint8Array(32);
+    padLeft.set(h31, 1); // 0x00 || h31 — signs identically to h31
+    const h33 = new Uint8Array(33).fill(9);
+    const truncated = h33.slice(0, 32); // h33 is silently cut down to this
+
+    expect(errorCode(() => signHash(h31, priv))).toBe("bad-length");
+    expect(errorCode(() => signHash(h33, priv))).toBe("bad-length");
+    // Both of the colliding partners are legal 32-byte hashes and still sign,
+    // so the guard rejects the ambiguous input without narrowing the valid set.
+    expect(signHash(padLeft, priv).length).toBeGreaterThan(64);
+    expect(signHash(truncated, priv).length).toBeGreaterThan(64);
+    // And they are genuinely different messages, which is what made the silent
+    // collision dangerous: distinct 32-byte hashes, distinct signatures.
+    expect(bytesToHex(signHash(padLeft, priv))).not.toBe(bytesToHex(signHash(truncated, priv)));
   });
 });
 
