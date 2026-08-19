@@ -358,6 +358,19 @@ affect you.
 
 ### Changed — packaging
 
+- **The Ed25519 group order is written out instead of read from `ed25519.CURVE.n`.**
+  Reading the curve object evaluated at module scope, so every bundle that reached
+  `wif.ts` — which is every bundle that encodes a WIF — anchored `@noble/curves`'
+  `ed25519` and `edwards` modules, about 27 KB, even for a consumer that only ever
+  touches the secp256k1 suites. `assertWifScalar` returns early for those suites,
+  but no bundler can prove that branch dead, and a lazy getter does not help either,
+  since `assertWifScalar` is itself always reachable: measured through esbuild, the
+  deferred form came out 73 bytes *larger* and still carried the curve. Removing the
+  eager read drops an ECDSA-only bundle from 192,587 to 164,902 bytes (−14.4%).
+  `isValidEd25519PublicKey` still uses the curve, so a consumer that decodes
+  Ed25519 addresses pulls it in as before. A new test in `encoding.test.ts` asserts
+  the constant equals `ed25519.CURVE.n`, keeping the value tied to the audited
+  source while leaving the reference out of the module graph.
 - `npm run coverage` works: `@vitest/coverage-v8` is now a devDependency, and
   thresholds live in `vitest.config.ts` (currently 97.6% statements, 90.4%
   branches) so a real regression fails CI.

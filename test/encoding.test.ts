@@ -20,7 +20,13 @@ import {
   pubKeyHashSchnorrAddress,
   scriptHashAddress,
 } from "../src/address.js";
-import { isValidEd25519PublicKey, isValidPublicKey, scalarToBytes } from "../src/keys.js";
+import {
+  ED25519_CURVE_ORDER,
+  isValidEd25519PublicKey,
+  isValidPublicKey,
+  scalarToBytes,
+} from "../src/keys.js";
+import { ed25519 } from "@noble/curves/ed25519";
 import { blake256, hash160 } from "../src/hash.js";
 import { decodeWif, encodeWif, SignatureType } from "../src/wif.js";
 import { bytesToHex, hexToBytes, nonEmpty, vectors, errorCode } from "./helpers.js";
@@ -405,6 +411,15 @@ describe("WIF", () => {
         `encode ${String(bad)}`,
       ).toBe("unsupported-signature-type");
     }
+  });
+
+  test("the written-out Ed25519 group order is the one @noble derives", () => {
+    // `keys.ts` writes the order out instead of reading `ed25519.CURVE.n`, so that
+    // an ECDSA-only consumer does not pull the whole curve into its bundle. That
+    // trades a provenance property for bundle size, and this is where it is
+    // bought back: the value still has to equal the audited source's, but only
+    // the test imports it, so nothing follows the reference into a build.
+    expect(ED25519_CURVE_ORDER).toBe(ed25519.CURVE.n);
   });
 
   test("Ed25519 scalars follow dcrd's bounds, secp256k1 suites stay unchecked", () => {

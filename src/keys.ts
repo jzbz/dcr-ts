@@ -18,8 +18,22 @@ function typeName(v: unknown): string {
 /** The secp256k1 group order. */
 export const CURVE_ORDER: bigint = secp256k1.CURVE.n;
 
-/** The Ed25519 group order. Bounds WIF scalars for that signature suite. */
-export const ED25519_CURVE_ORDER: bigint = ed25519.CURVE.n;
+/**
+ * The Ed25519 group order, 2^252 + 27742317777372353535851937790883648493.
+ *
+ * Written out rather than read from `ed25519.CURVE.n` so that a consumer who
+ * never touches the Ed25519 suite does not carry the curve. Reading the curve
+ * object evaluates at module scope, which anchors `@noble/curves`' `ed25519`
+ * and `edwards` modules — about 27 KB — into every bundle that reaches `wif.ts`,
+ * even though the only consumer is `assertWifScalar`, which returns early for
+ * both secp256k1 suites. No bundler can prove that branch dead, so the eager
+ * read is the only thing available to remove; deferring it behind a lazy getter
+ * does not help, because `assertWifScalar` itself is always reachable.
+ *
+ * `encoding.test.ts` asserts this equals `ed25519.CURVE.n`, so the value stays
+ * tied to the audited source without the module graph depending on it.
+ */
+export const ED25519_CURVE_ORDER: bigint = 2n ** 252n + 27742317777372353535851937790883648493n;
 
 /** True when `key` is a valid secp256k1 private scalar (0 < key < n). */
 export function isValidPrivateKey(key: Uint8Array): boolean {
