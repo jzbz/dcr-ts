@@ -171,6 +171,14 @@ branching on `hasErrorCode` could not classify the failure.
   size, `invalid-argument` for a wordlist that is not 2048 words, and
   `invalid-mnemonic` for the phrase itself. Wrapping also drops `@scure`'s message
   for an unknown word, which inlined the entire 2048-word list.
+- **A non-string mnemonic is an argument fault, not a bad phrase.** `@scure`
+  conflates the two — `mnemonicToEntropy` throws the same untyped error for a
+  number as for a bad checksum, and `validateMnemonic` merely answers `false` —
+  so `mnemonicToMasterKey` told a caller who passed a number that their checksum
+  was wrong, or that one of their words was not in the wordlist. All three
+  mnemonic entry points now report `invalid-argument` for a non-string and keep
+  `invalid-mnemonic` for a phrase that is genuinely bad.
+
 - **`mnemonicToSeed` decides for itself instead of catching.** Its wrapper caught
   everything and reported `invalid-mnemonic`, so a bug inside `@scure` — or a new
   failure in a future version — would have been reported to the caller as "your

@@ -32,6 +32,20 @@ export const englishWordlist: Wordlist = english;
 const MNEMONIC_WORD_COUNTS: readonly number[] = [12, 15, 18, 21, 24];
 
 /**
+ * Throw unless `mnemonic` is a string.
+ *
+ * Separated from the phrase checks because it is a different fault with a
+ * different remedy: `@scure` reports it as the same untyped throw as a bad
+ * checksum, and folding the two together told a caller who passed a number that
+ * their checksum was wrong.
+ */
+function assertMnemonicString(mnemonic: string, who: string): void {
+  if (typeof mnemonic !== "string") {
+    throw err("invalid-argument", who, `mnemonic must be a string, got ${typeof mnemonic}`);
+  }
+}
+
+/**
  * Throw unless `wordlist` holds the 2048 words BIP39 requires.
  *
  * `Wordlist` is `readonly string[]`, so a list of the wrong size type-checks
@@ -66,6 +80,7 @@ export function validateMnemonic(mnemonic: string, wordlist: Wordlist = english)
 
 /** Recover the raw entropy behind a mnemonic. */
 export function mnemonicToEntropy(mnemonic: string, wordlist: Wordlist = english): Uint8Array {
+  assertMnemonicString(mnemonic, "mnemonicToEntropy");
   assertWordlist(wordlist, "mnemonicToEntropy");
   // Every remaining failure — word count, unknown word, checksum — is one code to
   // the caller, so catching is enough and costs nothing; pre-validating would
@@ -115,13 +130,7 @@ export function entropyToMnemonic(entropy: Uint8Array, wordlist: Wordlist = engl
  * the mnemonic, which is the one direction that wastes the most debugging time.
  */
 export function mnemonicToSeed(mnemonic: string, passphrase = ""): Uint8Array {
-  if (typeof mnemonic !== "string") {
-    throw err(
-      "invalid-argument",
-      "mnemonicToSeed",
-      `mnemonic must be a string, got ${typeof mnemonic}`,
-    );
-  }
+  assertMnemonicString(mnemonic, "mnemonicToSeed");
   // NFKD before counting, and split on a single space, because that is what
   // `@scure` does: normalization can *create* a word boundary, since it maps a
   // no-break space to a plain one.
@@ -156,6 +165,9 @@ export function mnemonicToMasterKey(
   passphrase = "",
   wordlist: Wordlist = english,
 ): ExtendedKey {
+  // `validateMnemonic` answers `false` for a non-string rather than throwing, so
+  // without this the message below would blame the checksum for a type error.
+  assertMnemonicString(mnemonic, "mnemonicToMasterKey");
   assertWordlist(wordlist, "mnemonicToMasterKey");
   if (!validateMnemonic(mnemonic, wordlist)) {
     throw err(

@@ -534,19 +534,35 @@ describe("the mnemonic wrappers keep their own errors", () => {
     }
   });
 
-  test("mnemonicToSeed reports which failure it was", () => {
+  test("a non-string is an argument fault, not a bad mnemonic", () => {
+    // @scure conflates the two: mnemonicToEntropy and mnemonicToSeed throw the
+    // same untyped error for a number as for a bad checksum, and
+    // validateMnemonic just answers false — so mnemonicToMasterKey told a caller
+    // who passed a number that their checksum was wrong.
+    for (const bad of [12345, null, undefined, new Uint8Array(12), {}, ["a"]]) {
+      const label = `${Object.prototype.toString.call(bad)}`;
+      for (const [who, fn] of [
+        ["mnemonicToSeed", () => mnemonicToSeed(bad as unknown as string)],
+        ["mnemonicToEntropy", () => mnemonicToEntropy(bad as unknown as string)],
+        [
+          "mnemonicToMasterKey",
+          () => mnemonicToMasterKey(bad as unknown as string, networks.mainnet),
+        ],
+      ] as Array<[string, () => unknown]>) {
+        expect(errorCode(fn), `${who}(${label})`).toBe("invalid-argument");
+      }
+    }
+    // A string that is a bad phrase still reports the phrase, not the type.
     const w = "abandon";
     expect(errorCode(() => mnemonicToSeed(Array(11).fill(w).join(" ")))).toBe("invalid-mnemonic");
     expect(errorCode(() => mnemonicToSeed(""))).toBe("invalid-mnemonic");
-    // A non-string is an argument fault, not a bad mnemonic — @scure conflated
-    // the two into one untyped throw.
-    for (const bad of [12345, null, undefined, new Uint8Array(12), {}]) {
-      expect(
-        errorCode(() => mnemonicToSeed(bad as unknown as string)),
-        `type ${typeof bad}`,
-      ).toBe("invalid-argument");
-    }
-    // The message names the count, which is the thing the caller got wrong.
+    expect(errorCode(() => mnemonicToEntropy(Array(12).fill("zzzzzz").join(" ")))).toBe(
+      "invalid-mnemonic",
+    );
+  });
+
+  test("mnemonicToSeed names the word count it got", () => {
+    const w = "abandon";
     try {
       mnemonicToSeed(Array(13).fill(w).join(" "));
       throw new Error("expected a throw");
