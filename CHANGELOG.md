@@ -171,6 +171,20 @@ branching on `hasErrorCode` could not classify the failure.
   size, `invalid-argument` for a wordlist that is not 2048 words, and
   `invalid-mnemonic` for the phrase itself. Wrapping also drops `@scure`'s message
   for an unknown word, which inlined the entire 2048-word list.
+- **`mnemonicToSeed` decides for itself instead of catching.** Its wrapper caught
+  everything and reported `invalid-mnemonic`, so a bug inside `@scure` — or a new
+  failure in a future version — would have been reported to the caller as "your
+  mnemonic is bad", the one direction that wastes the most debugging time. The
+  two failures it can actually have are now checked directly, and the catch is
+  gone. They are exhaustive: `mnemonicToSeedSync` touches the caller's input only
+  through `nfkd`, which rejects a non-string, and `normalize`, which rejects a
+  word count outside 12, 15, 18, 21 and 24; its salt is a string concatenation
+  that cannot throw, and its PBKDF2 parameters are constants. A non-string is now
+  `invalid-argument` rather than being conflated with a bad phrase, and the word
+  count is named in the message. The checks are verified against `@scure` itself
+  by a differential test — including the normalization subtlety that NFKD maps a
+  no-break space to a plain one, *creating* a word boundary.
+
 - **`mnemonicToSeed` was documented as unchecked and is not.** `@scure` enforces a
   word count of 12, 15, 18, 21 or 24 before the PBKDF2, so `mnemonicToSeed("hello")`
   always threw. Only the checksum and the wordlist go unchecked; the doc comment

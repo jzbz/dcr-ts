@@ -12,6 +12,7 @@ import {
   validateMnemonic,
 } from "../src/bip39.js";
 import { wordlist as spanish } from "@scure/bip39/wordlists/spanish";
+import { mnemonicToSeedSync as scureMnemonicToSeedSync } from "@scure/bip39";
 import { networks } from "../src/networks.js";
 import { addressToScript, pubKeyHashAddress } from "../src/address.js";
 import { DcrError, hasErrorCode, isDcrError } from "../src/errors.js";
@@ -285,9 +286,9 @@ describe("mnemonicToMasterKey validates the phrase", () => {
   });
 
   test("rejects a bad checksum or an unknown word", () => {
-    // BIP39 seed derivation is defined for any string, so without this a typo'd
-    // phrase expands into a different valid-looking wallet and every operation
-    // appears to succeed.
+    // Seed derivation consults no wordlist and does not check the checksum, so
+    // without this a typo'd phrase of the right length expands into a different
+    // valid-looking wallet and every operation appears to succeed.
     const badChecksum = good.replace(/yellow$/, "zoo");
     const notAWord = good.replace(/^legal/, "zzzzzz");
     for (const bad of [badChecksum, notAWord, "", "legal winner"]) {
@@ -474,6 +475,84 @@ describe("the mnemonic wrappers keep their own errors", () => {
     expect(errorCode(() => mnemonicToMasterKey(phrase, networks.mainnet, "", short))).toBe(
       "invalid-argument",
     );
+  });
+
+  test("mnemonicToSeed decides exactly what @scure decides", () => {
+    // The word-count and type checks are made here rather than caught from
+    // @scure, so they have to agree with it exactly or a phrase that works today
+    // starts throwing. Normalization is the subtle part: NFKD maps a no-break
+    // space to a plain one, *creating* a word boundary, so the count has to be
+    // taken after normalizing and split on a single space, as @scure does.
+    const w = "abandon";
+    const nbsp = "\u00a0";
+    const probes: string[] = [
+      Array(12).fill(w).join(" "),
+      Array(11).fill(w).join(" "),
+      Array(13).fill(w).join(" "),
+      Array(15).fill(w).join(" "),
+      Array(24).fill(w).join(" "),
+      Array(25).fill(w).join(" "),
+      "",
+      "   ",
+      Array(12).fill(w).join("\t"),
+      Array(12).fill(w).join("  "),
+      // NFKD-active: the no-break space becomes a separator, so this is 12 words.
+      Array(6).fill(w).join(" ") + nbsp + Array(6).fill(w).join(" "),
+      // A compatibility ligature and a combining sequence, neither of which
+      // changes the word count but both of which change the normalized string.
+      "ﬁ " + Array(11).fill(w).join(" "),
+      "ẛ̣ " + Array(11).fill(w).join(" "),
+      Array(12).fill("zzzzzz").join(" "), // legal count, unknown words: accepted
+    ];
+    for (const p of probes) {
+      let scureTook: boolean;
+      try {
+        scureMnemonicToSeedSync(p);
+        scureTook = true;
+      } catch {
+        scureTook = false;
+      }
+      let oursTook: boolean;
+      try {
+        mnemonicToSeed(p);
+        oursTook = true;
+      } catch (e) {
+        oursTook = false;
+        // It must be *our* check that rejected, not a throw leaking out of
+        // @scure. Without this the assertion below cannot tell the two apart —
+        // a pre-check that is too permissive still ends up rejecting, just with
+        // an untyped error, which is the failure this function was rewritten to
+        // remove.
+        expect(isDcrError(e), `DcrError for ${JSON.stringify(p).slice(0, 48)}`).toBe(true);
+      }
+      expect(oursTook, `verdict for ${JSON.stringify(p).slice(0, 48)}`).toBe(scureTook);
+      // And where both accept, the bytes must be identical — this is a
+      // key-derivation primitive, so the check must gate without altering.
+      if (scureTook) {
+        expect(bytesToHex(mnemonicToSeed(p))).toBe(bytesToHex(scureMnemonicToSeedSync(p)));
+      }
+    }
+  });
+
+  test("mnemonicToSeed reports which failure it was", () => {
+    const w = "abandon";
+    expect(errorCode(() => mnemonicToSeed(Array(11).fill(w).join(" ")))).toBe("invalid-mnemonic");
+    expect(errorCode(() => mnemonicToSeed(""))).toBe("invalid-mnemonic");
+    // A non-string is an argument fault, not a bad mnemonic — @scure conflated
+    // the two into one untyped throw.
+    for (const bad of [12345, null, undefined, new Uint8Array(12), {}]) {
+      expect(
+        errorCode(() => mnemonicToSeed(bad as unknown as string)),
+        `type ${typeof bad}`,
+      ).toBe("invalid-argument");
+    }
+    // The message names the count, which is the thing the caller got wrong.
+    try {
+      mnemonicToSeed(Array(13).fill(w).join(" "));
+      throw new Error("expected a throw");
+    } catch (e) {
+      expect((e as Error).message).toMatch(/got 13$/);
+    }
   });
 
   test("a bad phrase is invalid-mnemonic, whichever way it is bad", () => {

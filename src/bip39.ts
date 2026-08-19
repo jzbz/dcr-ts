@@ -28,6 +28,9 @@ export type Wordlist = readonly string[];
 /** The English BIP39 wordlist, used wherever `wordlist` is omitted. */
 export const englishWordlist: Wordlist = english;
 
+/** The five word counts BIP39 defines. Anything else is not a mnemonic. */
+const MNEMONIC_WORD_COUNTS: readonly number[] = [12, 15, 18, 21, 24];
+
 /**
  * Throw unless `wordlist` holds the 2048 words BIP39 requires.
  *
@@ -99,15 +102,38 @@ export function entropyToMnemonic(entropy: Uint8Array, wordlist: Wordlist = engl
  * Checksum-unchecked, by design: derivation does not consult a wordlist, so any
  * phrase of a legal length expands whether or not its words are in a list and
  * whether or not its checksum holds. Use {@link mnemonicToMasterKey} to get the
- * checksum verified first. The word count *is* enforced, by `@scure`: BIP39 is
- * defined only for 12, 15, 18, 21 or 24 words.
+ * checksum verified first. The word count *is* enforced: BIP39 is defined only
+ * for 12, 15, 18, 21 or 24 words.
+ *
+ * Both failures are checked here rather than caught from `@scure`, and the two
+ * checks are exhaustive: `mnemonicToSeedSync` reaches the caller's input only
+ * through `nfkd`, which rejects a non-string, and `normalize`, which rejects a
+ * word count outside the five. Its salt is `"mnemonic" + passphrase`, a
+ * concatenation that always yields a string, and its PBKDF2 parameters are
+ * constants — so nothing else in it can throw. Catching instead would report
+ * `invalid-mnemonic` for a future `@scure` failure that has nothing to do with
+ * the mnemonic, which is the one direction that wastes the most debugging time.
  */
 export function mnemonicToSeed(mnemonic: string, passphrase = ""): Uint8Array {
-  try {
-    return mnemonicToSeedSync(mnemonic, passphrase);
-  } catch {
-    throw err("invalid-mnemonic", "mnemonicToSeed", "a mnemonic is 12, 15, 18, 21 or 24 words");
+  if (typeof mnemonic !== "string") {
+    throw err(
+      "invalid-argument",
+      "mnemonicToSeed",
+      `mnemonic must be a string, got ${typeof mnemonic}`,
+    );
   }
+  // NFKD before counting, and split on a single space, because that is what
+  // `@scure` does: normalization can *create* a word boundary, since it maps a
+  // no-break space to a plain one.
+  const words = mnemonic.normalize("NFKD").split(" ").length;
+  if (!MNEMONIC_WORD_COUNTS.includes(words)) {
+    throw err(
+      "invalid-mnemonic",
+      "mnemonicToSeed",
+      `a mnemonic is 12, 15, 18, 21 or 24 words, got ${words}`,
+    );
+  }
+  return mnemonicToSeedSync(mnemonic, passphrase);
 }
 
 /**
