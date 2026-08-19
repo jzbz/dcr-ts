@@ -64,6 +64,16 @@ This library has **not** been independently audited. See [SECURITY.md](SECURITY.
   and `calcSignatureHash` rejects a non-integer input index (`NaN` slipped past both
   range checks and produced a hash committing the subScript to no input).
 
+- **A zero HMAC left half is an invalid child on both derivation paths.** dcrd's
+  `hdkeychain` rejects `IL` when `overflow || ilModN.IsZero()`, before it splits
+  on private-vs-public, so a zero `IL` invalidates the index for either. This
+  library applied the zero check only on the public path; on the private path the
+  derived child would have been byte-identical to its parent, silently diverging
+  every descendant from what dcrd derives. A zero `IL` is a 2^-256 HMAC output, so
+  nothing observable changes — it removes an asymmetry between two sibling
+  functions in `keys.ts`. Note this is stricter than BIP32 itself, which permits
+  `IL == 0` on the private path.
+
 - **`Transaction.version` was masked to 16 bits instead of range-checked.**
   `serialize()` packed it as `(serType << 16) | (version & 0xffff)`, so 65537
   serialized as version 1, -1 as 65535 and `NaN` as 0 — and the txid and every

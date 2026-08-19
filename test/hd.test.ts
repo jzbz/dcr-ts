@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { ExtendedKey, HARDENED_OFFSET, hardened } from "../src/hd.js";
 import { networks } from "../src/networks.js";
+import {
+  parsePublicKeyPoint,
+  privateKeyTweakAdd,
+  publicKeyFromPrivate,
+  publicKeyTweakAddPoint,
+} from "../src/keys.js";
 import { bytesToHex, hexToBytes, vectors, errorCode } from "./helpers.js";
 
 describe("HD keys (BIP32, Decred serialization)", () => {
@@ -150,6 +156,32 @@ describe("HD keys (BIP32, Decred serialization)", () => {
   test("hardened derivation from a public key is rejected", () => {
     const pub = ExtendedKey.fromSeed(seed, networks.mainnet).neuter();
     expect(errorCode(() => pub.derive(hardened(0)))).toBe("hardened-from-public");
+  });
+
+  // dcrd's `child` rejects IL before the private/public split — `overflow ||
+  // ilModN.IsZero()` — so an all-zero left HMAC half is an invalid child on BOTH
+  // paths. BIP32 itself allows it on the private path, where it would make the
+  // child byte-identical to its parent. Reaching it through derive() would need
+  // an HMAC-SHA512 whose left half is zero, so the tweaks are exercised directly.
+  test("IL == 0 is an invalid child on both derivation paths, as in dcrd", () => {
+    const kPar = hexToBytes(vectors.keys.privHex);
+    const zero = new Uint8Array(32);
+    const overflow = new Uint8Array(32).fill(0xff);
+    const one = new Uint8Array(32);
+    one[31] = 1;
+
+    expect(privateKeyTweakAdd(kPar, zero)).toBeNull();
+    expect(privateKeyTweakAdd(kPar, overflow)).toBeNull();
+
+    const parent = parsePublicKeyPoint(publicKeyFromPrivate(kPar));
+    expect(parent).not.toBeNull();
+    expect(publicKeyTweakAddPoint(parent!, zero)).toBeNull();
+    expect(publicKeyTweakAddPoint(parent!, overflow)).toBeNull();
+
+    // Non-vacuous: a legal IL still tweaks, and to something other than kPar.
+    const child = privateKeyTweakAdd(kPar, one);
+    expect(child).not.toBeNull();
+    expect(bytesToHex(child!)).not.toBe(bytesToHex(kPar));
   });
 
   test("round-trips through fromString", () => {

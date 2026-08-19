@@ -153,12 +153,18 @@ export function bytesToBigInt(b: Uint8Array): bigint {
 
 /**
  * BIP32 private child tweak: `(IL + kPar) mod n`, returned as 32 bytes.
- * Returns `null` when the result is invalid (IL >= n, or the sum is zero),
- * which signals the caller to skip to the next index.
+ * Returns `null` when the result is invalid (IL zero or >= n, or the sum is
+ * zero), which signals the caller to skip to the next index.
+ *
+ * BIP32 invalidates only `IL >= n` and `ki == 0`. Rejecting `IL == 0` as well is
+ * dcrd's rule — `overflow || ilModN.IsZero()` in `hdkeychain`'s `child`, checked
+ * before the private/public split, so it applies to both paths — and it is what
+ * {@link publicKeyTweakAddPoint} already does. Without it a zero IL would make
+ * the child byte-identical to its parent.
  */
 export function privateKeyTweakAdd(kPar: Uint8Array, il: Uint8Array): Uint8Array | null {
   const ilInt = bytesToBigInt(il);
-  if (ilInt >= CURVE_ORDER) return null;
+  if (ilInt === 0n || ilInt >= CURVE_ORDER) return null;
   const child = (ilInt + bytesToBigInt(kPar)) % CURVE_ORDER;
   if (child === 0n) return null;
   return scalarToBytes(child);
